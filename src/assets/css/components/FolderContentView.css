@@ -1,0 +1,111 @@
+.folder-content {
+    position: relative;
+    min-height: 200px;
+}
+
+.folder-content.list .item-card {
+    border: 1px solid #ddd;
+    margin: 8px 0;
+    padding: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-radius: 4px;
+    background-color: white;
+}
+
+.folder-content.list .item-card:hover {
+    background-color: #f5f5f5;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    transform: translateY(-2px);
+}
+
+.folder-content.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 15px;
+}
+
+.folder-content.grid .item-card {
+    border: 1px solid #ddd;
+    padding: 15px 10px;
+    cursor: pointer;
+    text-align: center;
+    border-radius: 4px;
+    background-color: white;
+    transition: all 0.2s ease;
+    height: 100px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+}
+
+.folder-content.grid .item-card:hover {
+    background-color: #f5f5f5;
+    box-shadow: 0 3px 6px rgba(0, 0, 0, 0.1);
+    transform: translateY(-3px);
+}
+
+.item-content {
+    display: flex;
+    align-items: center;
+}
+
+.item-icon {
+    font-size: 24px;
+    margin-right: 10px;
+}
+
+.item-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 90%;
+}
+
+.folder-content.grid .item-content {
+    flex-direction: column;
+}
+
+.folder-content.grid .item-icon {
+    font-size: 32px;
+    margin-right: 0;
+    margin-bottom: 10px;
+}
+
+/* Стили для drag & drop */
+.item-card.drag-over {
+    background-color: #e0f7fa !important;
+    border: 2px dashed #26c6da !important;
+}
+
+.empty-folder {
+    padding: 30px;
+    text-align: center;
+    color: #777;
+    background-color: #f9f9f9;
+    border-radius: 8px;
+    margin: 20px 0;
+}
+
+.hint {
+    font-size: 0.9em;
+    margin-top: 5px;
+    color: #999;
+}
+
+/* Адаптивность */
+@media (max-width: 480px) {
+    .folder-content.grid {
+        grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    }
+
+    .folder-content.grid .item-card {
+        padding: 10px;
+        height: 80px;
+    }
+
+    .folder-content.grid .item-icon {
+        font-size: 24px;
+    }
+}

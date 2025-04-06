@@ -1,0 +1,46 @@
+/* Глобальные стили для всего приложения */
+@font-face {
+    font-family: 'Avdira';
+    src: url('/src/assets/fonts/Avdira_B.otf') format('opentype');
+    font-weight: normal;
+    font-style: normal;
+    font-display: swap;
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    font-family: Tahoma, sans-serif;
+    overflow: hidden;
+}
+
+/* Стили для корректной работы с Leaflet при overflow: hidden */
+.leaflet-container {
+    z-index: 1;
+}
+
+.leaflet-control {
+    z-index: 800;
+    pointer-events: auto !important;
+}
+
+.leaflet-pane {
+    z-index: 400;
+}
+
+.leaflet-marker-pane {
+    z-index: 600;
+}
+
+.leaflet-popup-pane {
+    z-index: 700;
+}
+
+/* Стили для логотипа */
+.app-title {
+    color: #14ae5c;
+    font-size: 24px;
+    font-weight: normal;
+    margin: 0;
+    font-family: 'Avdira', sans-serif;
+}

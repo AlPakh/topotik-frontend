@@ -1,0 +1,160 @@
+.app-container {
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    background-color: #f5f5f5;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 15px 30px;
+    background-color: white;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.app-title {
+    color: #14ae5c;
+    font-size: 24px;
+    margin: 0;
+    font-family: 'Avdira', sans-serif;
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+}
+
+.user-name {
+    margin-right: 10px;
+    font-weight: bold;
+}
+
+.user-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    background-color: #e0e0e0;
+    border-radius: 50%;
+    margin-left: 5px;
+}
+
+.main-page-container {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+}
+
+.right-content {
+    flex: 1;
+    padding: 5px 10px;
+    overflow-y: auto;
+}
+
+.content-area {
+    background-color: white;
+    border-radius: 8px;
+    padding: 5px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    min-height: calc(100vh - 100px);
+}
+
+.view-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+}
+
+.map-preview {
+    margin-top: 20px;
+    padding: 20px;
+    background-color: #f9f9f9;
+    border-radius: 4px;
+    text-align: center;
+}
+
+/* Стили для модального окна подтверждения удаления */
+.delete-confirmation-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+.delete-confirmation-dialog {
+    background-color: white;
+    padding: 30px;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+    width: 90%;
+    max-width: 500px;
+}
+
+.confirmation-input {
+    margin: 20px 0;
+}
+
+.confirmation-input input {
+    width: 100%;
+    padding: 8px;
+    margin-top: 5px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.confirmation-buttons {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+}
+
+.delete-button {
+    background-color: #e53935;
+    color: white;
+    border: none;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+.delete-button:disabled {
+    background-color: #ffcdd2;
+    cursor: not-allowed;
+}
+
+.cancel-button {
+    background-color: #f5f5f5;
+    border: 1px solid #ddd;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+}
+
+/* Адаптивность */
+@media (max-width: 768px) {
+    .header {
+        padding: 10px 15px;
+    }
+
+    .app-title {
+        font-size: 20px;
+    }
+
+    .right-content {
+        padding: 10px;
+    }
+
+    .content-area {
+        padding: 15px;
+    }
+}
