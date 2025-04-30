@@ -1,12 +1,18 @@
 <template>
   <div class="login-container">
     <div class="login-form">
-      <h2 class="title">ТОПОТИК</h2>
+      <h2 class="app-title">ΤοποΤικ</h2>
+      
+      <div v-if="error" class="error-message">
+        {{ error }}
+      </div>
       
       <input 
-        v-model="username" 
-        placeholder="Логин" 
+        v-model="email" 
+        placeholder="Email" 
         class="login-input username"
+        type="email"
+        required
       />
       
       <input 
@@ -14,33 +20,66 @@
         v-model="password" 
         placeholder="Пароль" 
         class="login-input password"
+        required
       />
       
       <button 
-        @click="login" 
+        @click="handleLogin" 
+        :disabled="loading"
         class="login-button"
       >
-        Войти
+        {{ loading ? 'Выполняется вход...' : 'Войти' }}
       </button>
+      
+      <div class="register-link">
+        <router-link to="/register">Зарегистрироваться</router-link>
+      </div>
     </div>
   </div>
 </template>
 
 <script>
+import { ref } from 'vue';
+import { useRouter } from 'vue-router';
+import { login } from '@/services/auth';
+
 export default {
   name: 'LoginPage',
-  data() {
-    return {
-      username: '',
-      password: ''
+  
+  setup() {
+    const router = useRouter();
+    const email = ref('');
+    const password = ref('');
+    const error = ref('');
+    const loading = ref(false);
+    
+    const handleLogin = async () => {
+      if (!email.value || !password.value) {
+        error.value = 'Пожалуйста, введите email и пароль';
+        return;
+      }
+      
+      loading.value = true;
+      error.value = '';
+      
+      try {
+        await login(email.value, password.value);
+        router.push('/main');
+      } catch (err) {
+        error.value = err.response?.data?.detail || 'Ошибка входа. Проверьте учетные данные.';
+        console.error('Ошибка входа:', err);
+      } finally {
+        loading.value = false;
+      }
     };
-  },
-  methods: {
-    login() {
-      // Любые данные разрешают авторизацию
-      localStorage.setItem('logged_in', 'true');
-      this.$router.push('/main');
-    }
+    
+    return {
+      email,
+      password,
+      error,
+      loading,
+      handleLogin
+    };
   }
 };
 </script>

@@ -1,0 +1,55 @@
+<!-- src/views/NotFound.vue -->
+<template>
+  <div class="not-found">
+    <h1>404</h1>
+    <h2>Страница не найдена</h2>
+    <p>Извините, но страница, которую вы ищете, не существует.</p>
+    <router-link to="/" class="home-link">Вернуться на главную</router-link>
+  </div>
+</template>
+
+<script>
+export default {
+  name: 'NotFound'
+}
+</script>
+
+<style scoped>
+.not-found {
+  max-width: 600px;
+  margin: 100px auto 0;
+  text-align: center;
+}
+
+h1 {
+  font-size: 120px;
+  margin: 0;
+  color: #f44336;
+}
+
+h2 {
+  margin-top: 0;
+  font-size: 28px;
+}
+
+p {
+  margin: 20px 0;
+  font-size: 18px;
+  color: #666;
+}
+
+.home-link {
+  display: inline-block;
+  margin-top: 20px;
+  padding: 10px 20px;
+  background-color: #4CAF50;
+  color: white;
+  text-decoration: none;
+  border-radius: 4px;
+  font-size: 16px;
+}
+
+.home-link:hover {
+  background-color: #45a049;
+}
+</style> 

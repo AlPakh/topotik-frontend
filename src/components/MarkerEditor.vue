@@ -1,5 +1,6 @@
 <template>
-  <div class="marker-editor-panel">
+  <div class="marker-editor-panel" ref="editorPanel" :style="{ width: editorWidth + 'px' }">
+    <div class="resize-handle" @mousedown="startResize"></div>
     <div class="editor-header">
       <div class="header-title-area">
         <textarea 
@@ -9,9 +10,9 @@
           placeholder="Название метки"
         ></textarea>
         <div class="header-subtitle">
-          <span v-if="category" class="category-badge" :style="{ backgroundColor: category.color }">
-            {{ category.name }}
-          </span>
+      <span v-if="category" class="category-badge" :style="{ backgroundColor: category.color }">
+        {{ category.name }}
+      </span>
           <button class="export-button" @click="exportMarkdown" title="Экспорт в Markdown">
             <span>MD</span>
           </button>
@@ -87,14 +88,93 @@
                   <span class="list-bullet">•</span>
                 <textarea v-model="block.content" ref="textarea" class="form-textarea list-item-textarea"
                           @input="handleTextareaInput($event, index)"
-                          @focus="onBlockFocus(index)"
+                         @focus="onBlockFocus(index)"
                           @blur="handleTextareaBlur(index)"
                           @keydown="handleKeyDown($event, index)"
                           placeholder="Элемент списка"></textarea>
+                </div>
+              
+              <div v-else-if="block.type === 'ordered-list-item'" class="ordered-list-item-block">
+                <span class="list-number">{{ getOrderNumber(index) }}.</span>
+                <textarea v-model="block.content" ref="textarea" class="form-textarea ordered-list-textarea"
+                          @input="handleTextareaInput($event, index)"
+                          @focus="onBlockFocus(index)"
+                          @blur="handleTextareaBlur(index)"
+                          @keydown="handleOrderedListKeyDown($event, index)"
+                          placeholder="Пункт списка"></textarea>
+              </div>
+              
+              <div v-else-if="block.type === 'task-item'" class="task-item-block">
+                <input type="checkbox" 
+                       :checked="block.completed"
+                       @change="toggleTaskCompletion(index)" 
+                       class="task-checkbox"/>
+                <textarea v-model="block.content" ref="textarea" class="form-textarea task-textarea"
+                          @input="handleTextareaInput($event, index)"
+                          @focus="onBlockFocus(index)"
+                          @blur="handleTextareaBlur(index)"
+                          @keydown="handleKeyDown($event, index)"
+                          placeholder="Задача"
+                          :class="{ 'completed': block.completed }"></textarea>
+              </div>
+              
+              <div v-else-if="block.type === 'alert'" class="alert-block" :class="block.alertType">
+                <div class="alert-icon-container">
+                  <span v-if="block.alertType === 'info'" class="alert-icon info">i</span>
+                  <span v-else-if="block.alertType === 'warning'" class="alert-icon warning">⚠</span>
+                  <span v-else-if="block.alertType === 'error'" class="alert-icon error">!</span>
+                  <span v-else-if="block.alertType === 'success'" class="alert-icon success">✓</span>
+                </div>
+                <div class="alert-content">
+                  <div class="alert-type-label">{{ getAlertTypeLabel(block.alertType) }}</div>
+                  <textarea v-model="block.content" 
+                            ref="textarea" 
+                            class="form-textarea alert-textarea"
+                            @input="handleTextareaInput($event, index)"
+                            @focus="onBlockFocus(index)"
+                            @blur="handleTextareaBlur(index)"
+                            @keydown="handleKeyDown($event, index)"
+                            :placeholder="getAlertPlaceholder(block.alertType)"></textarea>
+                </div>
+              </div>
+              
+              <div v-else-if="block.type === 'embed'" class="embed-block">
+                <div class="embed-preview" :class="block.service">
+                  <div v-if="block.service === 'youtube'" class="youtube-embed">
+                    <iframe 
+                      :src="`https://www.youtube.com/embed/${block.serviceId}`" 
+                      frameborder="0" 
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                      allowfullscreen></iframe>
+                  </div>
+                  <div v-else-if="block.service === 'map'" class="map-embed">
+                    <iframe 
+                      :src="`https://www.google.com/maps/embed?pb=${block.serviceId}`" 
+                      frameborder="0" 
+                      allowfullscreen></iframe>
+                  </div>
+                </div>
+                <textarea v-if="block.caption !== undefined" 
+                          v-model="block.caption" 
+                          placeholder="Подпись (опционально)" 
+                          class="embed-caption"></textarea>
+                <div class="embed-controls">
+                  <button @click="editEmbed(index)" class="embed-edit-btn">Изменить</button>
+                </div>
               </div>
               
               <div v-else-if="block.type === 'divider'" class="divider-block">
                 <hr>
+              </div>
+
+              <div v-else-if="block.type === 'iframe'" class="iframe-block">
+                <textarea v-model="block.content" ref="textarea" class="form-textarea iframe-textarea"
+                          @input="handleTextareaInput($event, index)"
+                          @focus="onBlockFocus(index)"
+                          @blur="handleTextareaBlur(index)"
+                          @keydown="handleKeyDown($event, index)"
+                          placeholder="Вставьте код iframe..."></textarea>
+                <div v-if="block.content" class="iframe-preview" v-html="getSanitizedHtml(block.content)"></div>
               </div>
             </div>
             
@@ -114,6 +194,7 @@
          :style="blockTypeMenuPosition"
          @mouseenter="handleMenuMouseEnter('blockType')"
          @mouseleave="handleMenuMouseLeave('blockType')">
+       <div class="block-type-options-scroll">
       <div class="block-type-option" @click="addNewBlock('text', blockTypeMenuIndex)">
         <span class="block-type-icon">T</span>
         <span class="block-type-label">Текст</span>
@@ -130,17 +211,55 @@
         <span class="block-type-icon">H3</span>
         <span class="block-type-label">Заголовок 3</span>
       </div>
-      <div class="block-type-option" @click="addNewBlock('list-item', blockTypeMenuIndex)">
+         <div class="block-type-option" @click="addNewBlock('list-item', blockTypeMenuIndex)">
         <span class="block-type-icon">•</span>
         <span class="block-type-label">Список</span>
+      </div>
+         <div class="block-type-option" @click="addNewBlock('ordered-list-item', blockTypeMenuIndex)">
+           <span class="block-type-icon">1.</span>
+           <span class="block-type-label">Нумерованный список</span>
+         </div>
+         <div class="block-type-option" @click="addNewBlock('task-item', blockTypeMenuIndex)">
+           <span class="block-type-icon">☐</span>
+           <span class="block-type-label">Задача</span>
       </div>
       <div class="block-type-option" @click="addNewBlock('quote', blockTypeMenuIndex)">
         <span class="block-type-icon">""</span>
         <span class="block-type-label">Цитата</span>
       </div>
+         <div class="block-type-option" 
+              @mouseenter="handleSubmenuMouseEnter('alert')" 
+              @mouseleave="handleSubmenuMouseLeave('alert')">
+           <span class="block-type-icon">!</span>
+           <span class="block-type-label">Уведомление</span>
+           
+           <div v-if="showAlertTypesMenu" class="alert-types-submenu">
+             <div class="alert-type-option" @click="addAlertBlock('info', blockTypeMenuIndex)">
+               <span class="alert-icon info">i</span>
+               <span>Информация</span>
+             </div>
+             <div class="alert-type-option" @click="addAlertBlock('warning', blockTypeMenuIndex)">
+               <span class="alert-icon warning">⚠</span>
+               <span>Предупреждение</span>
+             </div>
+             <div class="alert-type-option" @click="addAlertBlock('error', blockTypeMenuIndex)">
+               <span class="alert-icon error">!</span>
+               <span>Ошибка</span>
+             </div>
+             <div class="alert-type-option" @click="addAlertBlock('success', blockTypeMenuIndex)">
+               <span class="alert-icon success">✓</span>
+               <span>Успех</span>
+             </div>
+           </div>
+         </div>
+         <div class="block-type-option" @click="addNewBlock('iframe', blockTypeMenuIndex)">
+           <span class="block-type-icon">⧉</span>
+           <span class="block-type-label">Встроить iframe</span>
+      </div>
       <div class="block-type-option" @click="addNewBlock('divider', blockTypeMenuIndex)">
         <span class="block-type-icon">—</span>
         <span class="block-type-label">Разделитель</span>
+         </div>
       </div>
     </div>
     
@@ -159,8 +278,30 @@
         {{ action.label }}
       </button>
     </div>
+    
+    <!-- Диалог для встраиваемого контента -->
+    <div v-if="showEmbed" class="embed-dialog">
+      <div class="embed-dialog-content">
+        <h3>Вставить {{ embedServiceName }}</h3>
+        <div class="form-group">
+          <label>URL или ID:</label>
+          <input type="text" v-model="embedUrl" class="form-input" />
+        </div>
+        <div class="form-group">
+          <label>Подпись (опционально):</label>
+          <input type="text" v-model="embedCaption" class="form-input" />
+        </div>
+        <div class="embed-dialog-buttons">
+          <button @click="cancelEmbedDialog">Отмена</button>
+          <button @click="insertEmbed" class="primary">Вставить</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
+
+
+
 
 <script>
 export default {
@@ -173,6 +314,10 @@ export default {
     category: {
       type: Object,
       default: null
+    },
+    parentWidth: {
+      type: Number,
+      default: window.innerWidth
     }
   },
   data() {
@@ -190,7 +335,23 @@ export default {
       contextActions: [],
       menuMouseLeaveTimeout: null,
       contextMenuMouseLeaveTimeout: null,
-      markdownContent: ''
+      markdownContent: '',
+      showAlertTypesMenu: false,
+      submenuTimeout: null,
+      // Добавляем переменные для изменения размера
+      isResizing: false,
+      editorWidth: 400,
+      startX: 0,
+      startWidth: 400,
+    }
+  },
+  computed: {
+    embedServiceName() {
+      switch (this.embedService) {
+        case 'youtube': return 'YouTube видео';
+        case 'map': return 'Карту';
+        default: return 'контент';
+      }
     }
   },
   mounted() {
@@ -203,6 +364,16 @@ export default {
     this.$nextTick(() => {
       this.resizeAllTextareas()
     })
+    
+    // Добавляем обработчики для изменения размера
+    document.addEventListener('mousemove', this.handleMouseMove)
+    document.addEventListener('mouseup', this.handleMouseUp)
+    
+    // Рассчитываем максимальную ширину
+    this.calculateMaxWidth()
+    
+    // Добавляем обработчик изменения размера окна
+    window.addEventListener('resize', this.calculateMaxWidth)
   },
   updated() {
     // Вызываем resize при обновлении компонента
@@ -214,6 +385,11 @@ export default {
     document.removeEventListener('click', this.handleOutsideClick)
     clearTimeout(this.menuMouseLeaveTimeout)
     clearTimeout(this.contextMenuMouseLeaveTimeout)
+    
+    // Удаляем обработчики
+    document.removeEventListener('mousemove', this.handleMouseMove)
+    document.removeEventListener('mouseup', this.handleMouseUp)
+    window.removeEventListener('resize', this.calculateMaxWidth)
   },
   methods: {
     handleTitleInput(event) {
@@ -424,14 +600,30 @@ export default {
           }
           
           // Переход к предыдущему блоку
-          if (['text', 'heading1', 'heading2', 'heading3', 'quote', 'list-item'].includes(prevBlock.type)) {
+          // Проверяем, что предыдущий блок содержит текстовое поле
+          const textTypes = ['text', 'heading1', 'heading2', 'heading3', 'quote', 'list-item', 'ordered-list-item', 'task-item', 'alert', 'iframe']
+          if (textTypes.includes(prevBlock.type)) {
             event.preventDefault()
             this.$nextTick(() => {
+              // Используем правильный индекс для доступа к textarea
               const textareas = document.querySelectorAll('.content-block textarea')
-              if (textareas[prevIndex]) {
-                textareas[prevIndex].focus()
-                const len = textareas[prevIndex].value.length
-                textareas[prevIndex].setSelectionRange(len, len)
+              // Ищем textarea в предыдущем блоке
+              let prevTextareaIndex = 0
+              let found = false
+              
+              for (let i = 0; i < textareas.length; i++) {
+                if (i > index) break
+                if (i === (index - 1)) {
+                  prevTextareaIndex = i
+                  found = true
+                  break
+                }
+              }
+              
+              if (found && textareas[prevTextareaIndex]) {
+                textareas[prevTextareaIndex].focus()
+                const len = textareas[prevTextareaIndex].value.length
+                textareas[prevTextareaIndex].setSelectionRange(len, len)
               }
             })
             return
@@ -463,13 +655,26 @@ export default {
           }
           
           // Переход к следующему блоку
-          if (['text', 'heading1', 'heading2', 'heading3', 'quote', 'list-item'].includes(nextBlock.type)) {
+          const textTypes = ['text', 'heading1', 'heading2', 'heading3', 'quote', 'list-item', 'ordered-list-item', 'task-item', 'alert', 'iframe']
+          if (textTypes.includes(nextBlock.type)) {
             event.preventDefault()
             this.$nextTick(() => {
               const textareas = document.querySelectorAll('.content-block textarea')
-              if (textareas[nextIndex]) {
-                textareas[nextIndex].focus()
-                textareas[nextIndex].setSelectionRange(0, 0)
+              // Ищем textarea в следующем блоке
+              let nextTextareaIndex = 0
+              let found = false
+              
+              for (let i = 0; i < textareas.length; i++) {
+                if (i > index) {
+                  nextTextareaIndex = i
+                  found = true
+                  break
+                }
+              }
+              
+              if (found && textareas[nextTextareaIndex]) {
+                textareas[nextTextareaIndex].focus()
+                textareas[nextTextareaIndex].setSelectionRange(0, 0)
               }
             })
             return
@@ -746,67 +951,90 @@ export default {
     
     // Преобразование блоков в Markdown
     blocksToMarkdown(blocks) {
-      if (!blocks || !blocks.length) return ''
+      if (!blocks || !blocks.length) return '';
       
-      let result = []
-      let listMode = false
-      let listContents = []
+      let result = [];
+      let listMode = false;
+      let listContents = [];
       
       blocks.forEach(block => {
         if (block.type === 'list-item') {
           // Накапливаем элементы списка
-          listMode = true
+          listMode = true;
           if (block.content.trim() !== '') {
-            listContents.push(`* ${block.content}`)
+            listContents.push(`* ${block.content}`);
           }
         } else {
           // Если до этого был список, выводим его и сбрасываем режим списка
           if (listMode && listContents.length > 0) {
-            result.push(listContents.join('\n'))
-            listContents = []
-            listMode = false
+            result.push(listContents.join('\n'));
+            listContents = [];
+            listMode = false;
           }
           
           // Обрабатываем другие типы блоков
           switch (block.type) {
             case 'text':
               if (block.content.trim() !== '') {
-                result.push(block.content)
+                result.push(block.content);
               }
-              break
+              break;
             case 'heading1':
               if (block.content.trim() !== '') {
-                result.push(`# ${block.content}`)
+                result.push(`# ${block.content}`);
               }
-              break
+              break;
             case 'heading2':
               if (block.content.trim() !== '') {
-                result.push(`## ${block.content}`)
+                result.push(`## ${block.content}`);
               }
-              break
+              break;
             case 'heading3':
               if (block.content.trim() !== '') {
-                result.push(`### ${block.content}`)
+                result.push(`### ${block.content}`);
               }
-              break
+              break;
             case 'quote':
               if (block.content.trim() !== '') {
-                result.push(`> ${block.content}`)
+                result.push(`> ${block.content}`);
               }
-              break
+              break;
             case 'divider':
-              result.push('---')
-              break
+              result.push('---');
+              break;
+            case 'ordered-list-item': {
+              if (block.content.trim() !== '') {
+                result.push(`${block.order || 1}. ${block.content}`);
+              }
+              break;
+            }
+            case 'task-item': {
+              const checkboxText = block.completed ? '[x]' : '[ ]';
+              if (block.content.trim() !== '') {
+                result.push(`- ${checkboxText} ${block.content}`);
+              }
+              break;
+            }
+            case 'alert':
+              if (block.content.trim() !== '') {
+                result.push(`> [!${block.alertType.toUpperCase()}]\n> ${block.content}`);
+              }
+              break;
+            case 'iframe':
+              if (block.content.trim() !== '') {
+                result.push(`\`\`\`html\n${block.content}\n\`\`\``);
+              }
+              break;
           }
         }
-      })
+      });
       
       // Не забываем про список в конце документа
       if (listMode && listContents.length > 0) {
-        result.push(listContents.join('\n'))
+        result.push(listContents.join('\n'));
       }
       
-      return result.filter(content => content !== '').join('\n\n')
+      return result.filter(content => content !== '').join('\n\n');
     },
     
     // Преобразование Markdown в блоки
@@ -970,23 +1198,315 @@ export default {
       if (this.activeBlockIndex === index) {
         this.activeBlockIndex = null
       }
-    }
+    },
+    addAlertBlock(type, index) {
+      this.showAlertTypesMenu = false;
+      this.showBlockTypeMenu = false;
+      
+      // Создаем новый блок уведомления
+      const newBlock = {
+        type,
+        content: '',
+      }
+      
+      // Вставляем блок
+      let newIndex = index;
+      if (index < this.localMarker.blocks.length) {
+        const currentBlock = this.localMarker.blocks[index]
+        if (currentBlock.type === 'text' && currentBlock.content.trim() === '') {
+          this.localMarker.blocks.splice(index, 1, newBlock)
+        } else {
+          this.localMarker.blocks.splice(index + 1, 0, newBlock)
+          newIndex = index + 1;
+        }
+      } else {
+        this.localMarker.blocks.push(newBlock)
+        newIndex = this.localMarker.blocks.length - 1;
+      }
+      
+      // Фокусируемся на новом блоке
+      this.$nextTick(() => {
+        const textareas = document.querySelectorAll('.content-block textarea');
+        if (textareas[newIndex]) {
+          textareas[newIndex].focus();
+          textareas[newIndex].setSelectionRange(0, 0);
+          this.autoGrow(textareas[newIndex]);
+        }
+      });
+      
+      // Проверяем наличие пустого блока в конце
+      this.ensureEmptyBlockAtEnd();
+    },
+    showEmbedDialog(service, index) {
+      this.showBlockTypeMenu = false;
+      
+      this.embedService = service;
+      this.embedUrl = '';
+      this.embedCaption = '';
+      this.embedTargetIndex = index;
+      
+      this.showEmbed = true;
+    },
+    cancelEmbedDialog() {
+      this.showEmbed = false;
+    },
+    insertEmbed() {
+      if (!this.embedUrl.trim()) {
+        alert('Пожалуйста, введите URL или ID');
+        return;
+      }
+      
+      // Извлекаем ID из URL, если это полный URL
+      let serviceId = this.embedUrl;
+      
+      if (this.embedService === 'youtube' && this.embedUrl.includes('youtube.com')) {
+        // Извлекаем ID из YouTube URL
+        const match = this.embedUrl.match(/(?:\/|v=)([a-zA-Z0-9_-]{11})(?:\/|&|$)/);
+        if (match) {
+          serviceId = match[1];
+        }
+      }
+      
+      // Создаем блок встраиваемого контента
+      const embedBlock = {
+        type: 'embed',
+        service: this.embedService,
+        serviceId: serviceId,
+        caption: this.embedCaption
+      };
+      
+      // Вставляем блок
+      if (this.embedTargetIndex < this.localMarker.blocks.length) {
+        this.localMarker.blocks.splice(this.embedTargetIndex + 1, 0, embedBlock);
+      } else {
+        this.localMarker.blocks.push(embedBlock);
+      }
+      
+      this.showEmbed = false;
+      
+      // Проверяем наличие пустого блока в конце
+      this.ensureEmptyBlockAtEnd();
+    },
+    editEmbed(index) {
+      const block = this.localMarker.blocks[index];
+      if (block.type === 'embed') {
+        this.embedService = block.service;
+        this.embedUrl = block.serviceId;
+        this.embedCaption = block.caption || '';
+        this.embedTargetIndex = index;
+        this.showEmbed = true;
+      }
+    },
+    getOrderNumber(index) {
+      // Начинаем с 1 для первого элемента или продолжаем после предыдущего нумерованного списка
+      let order = 1;
+      for (let i = 0; i < index; i++) {
+        if (this.localMarker.blocks[i].type === 'ordered-list-item') {
+          if (i === index - 1 || this.isConsecutiveOrderedListItem(i, index)) {
+            order = (this.localMarker.blocks[i].order || 1) + 1;
+          }
+        } else {
+          // Сбрасываем, если между элементами есть другие типы блоков
+          order = 1;
+        }
+      }
+      // Обновляем порядковый номер в блоке
+      this.localMarker.blocks[index].order = order;
+      return order;
+    },
+    isConsecutiveOrderedListItem(firstIndex, secondIndex) {
+      for (let i = firstIndex + 1; i < secondIndex; i++) {
+        if (this.localMarker.blocks[i].type !== 'ordered-list-item') {
+          return false;
+        }
+      }
+      return true;
+    },
+    handleOrderedListKeyDown(event, index) {
+      // Базовая обработка как в handleKeyDown
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        
+        const textarea = event.target;
+        const cursorPosition = textarea.selectionStart;
+        const textBeforeCursor = this.localMarker.blocks[index].content.substring(0, cursorPosition);
+        const textAfterCursor = this.localMarker.blocks[index].content.substring(cursorPosition);
+        
+        // Обновляем текущий блок
+        this.localMarker.blocks[index].content = textBeforeCursor;
+        
+        // Создаем новый блок с типом ordered-list-item
+        this.localMarker.blocks.splice(index + 1, 0, {
+          type: 'ordered-list-item',
+          content: textAfterCursor,
+          order: (this.localMarker.blocks[index].order || 1) + 1 // Увеличиваем порядковый номер
+        });
+        
+        // Обновляем порядковые номера для всех последующих элементов нумерованного списка
+        this.updateOrderedListNumbers(index + 2);
+        
+        // Устанавливаем фокус на новый блок
+        this.$nextTick(() => {
+          const textareas = document.querySelectorAll('.content-block textarea');
+          if (textareas[index + 1]) {
+            textareas[index + 1].focus();
+            textareas[index + 1].setSelectionRange(0, 0);
+            this.autoGrow(textareas[index + 1]);
+          }
+        });
+        
+        // Проверяем наличие пустого блока в конце
+        this.ensureEmptyBlockAtEnd();
+        return;
+      }
+      
+      // Делегируем остальную обработку стандартному обработчику
+      this.handleKeyDown(event, index);
+    },
+    updateOrderedListNumbers(startIndex) {
+      let currentOrder = 1;
+      let lastListItemIndex = -1;
+      
+      for (let i = 0; i < this.localMarker.blocks.length; i++) {
+        if (this.localMarker.blocks[i].type === 'ordered-list-item') {
+          if (lastListItemIndex === -1 || i - lastListItemIndex > 1) {
+            // Начало нового списка
+            currentOrder = 1;
+          } else {
+            // Продолжение существующего списка
+            currentOrder++;
+          }
+          
+          if (i >= startIndex) {
+            this.localMarker.blocks[i].order = currentOrder;
+          }
+          
+          lastListItemIndex = i;
+        }
+      }
+    },
+    toggleTaskCompletion(index) {
+      const block = this.localMarker.blocks[index];
+      if (block.type === 'task-item') {
+        block.completed = !block.completed;
+      }
+    },
+    getAlertPlaceholder(alertType) {
+      switch (alertType) {
+        case 'info': return 'Информационное сообщение';
+        case 'warning': return 'Предупреждение';
+        case 'error': return 'Сообщение об ошибке';
+        case 'success': return 'Сообщение об успехе';
+        default: return 'Уведомление';
+      }
+    },
+    handleSubmenuMouseEnter(type) {
+      clearTimeout(this.submenuTimeout);
+      
+      if (type === 'alert') {
+        this.showAlertTypesMenu = true;
+      }
+    },
+    
+    handleSubmenuMouseLeave(type) {
+      this.submenuTimeout = setTimeout(() => {
+        if (type === 'alert') {
+          this.showAlertTypesMenu = false;
+        }
+      }, 300);
+    },
+    getSanitizedHtml(html) {
+      // Обрабатываем случай с iframe
+      if (html.includes('<iframe')) {
+        try {
+          // Убираем фиксированные размеры из iframe
+          let modified = html.replace(/width\s*=\s*["'].*?["']/gi, 'width="100%"')
+                              .replace(/height\s*=\s*["'].*?["']/gi, '')
+                              .replace(/style\s*=\s*["'](.*?)["']/gi, function() {
+                                // Сохраняем только нужные стили и добавляем width: 100%
+                                return 'style="width: 100%; max-width: 100%;"';
+                              });
+          return modified;
+        } catch (e) {
+          console.error('Ошибка при обработке HTML:', e);
+          return html;
+        }
+      }
+      return html;
+    },
+    // Методы для изменения размера панели
+    startResize(e) {
+      this.isResizing = true
+      this.startX = e.clientX
+      this.startWidth = this.editorWidth
+      e.preventDefault()
+    },
+    
+    handleMouseMove(e) {
+      if (!this.isResizing) return
+      
+      const maxWidth = this.calculateMaxWidth()
+      const minWidth = 400
+      
+      // Вычисляем новую ширину
+      const width = this.startWidth - (e.clientX - this.startX)
+      
+      // Ограничиваем ширину минимальным и максимальным значением
+      this.editorWidth = Math.min(Math.max(width, minWidth), maxWidth)
+    },
+    
+    handleMouseUp() {
+      this.isResizing = false
+    },
+    
+    calculateMaxWidth() {
+      // Получаем ширину родительского контейнера (map-view)
+      let parentWidth = this.parentWidth 
+      return Math.max(parentWidth * 0.9 - 300, 800) // 90% от ширины родителя или минимум 800px
+    },
+    getAlertTypeLabel(alertType) {
+      switch (alertType) {
+        case 'info': return 'Информация';
+        case 'warning': return 'Предупреждение';
+        case 'error': return 'Ошибка';
+        case 'success': return 'Успех';
+        default: return 'Уведомление';
+      }
+    },
   }
 }
 </script>
+
+
 
 <style scoped>
 .marker-editor-panel {
   position: fixed;
   top: 0;
   right: 0;
-  width: 400px;
   height: calc(100vh - 65px);
   background: white;
   box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
   z-index: 1000;
+  resize: horizontal;
+  overflow: auto;
+}
+
+.resize-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 5px;
+  height: 100%;
+  cursor: ew-resize;
+  background-color: transparent;
+  z-index: 1001;
+}
+
+.resize-handle:hover {
+  background-color: rgba(0, 0, 0, 0.05);
 }
 
 .editor-header {
@@ -1209,6 +1729,14 @@ export default {
   border-radius: 4px;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
   z-index: 1001;
+  max-height: 40vh;
+  overflow: hidden;
+  width: 200px;
+}
+
+.block-type-options-scroll {
+  overflow-y: auto;
+  max-height: 40vh;
 }
 
 .block-type-option {
@@ -1326,5 +1854,416 @@ export default {
 .content-block:hover .form-textarea::placeholder,
 .form-textarea:focus::placeholder {
   opacity: 1;
+}
+
+.embed-dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1002;
+}
+
+.embed-dialog-content {
+  background: white;
+  padding: 20px;
+  border-radius: 4px;
+  max-width: 400px;
+  width: 100%;
+}
+
+.embed-dialog h3 {
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+
+.embed-dialog .form-group {
+  margin-bottom: 15px;
+}
+
+.embed-dialog .form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+.embed-dialog .form-input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.embed-dialog .embed-dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.embed-dialog .embed-dialog-buttons button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.embed-dialog .embed-dialog-buttons button.primary {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.embed-dialog .embed-dialog-buttons button:hover {
+  background-color: #45a049;
+}
+
+/* Стили для нумерованных списков */
+.ordered-list-item-block {
+  display: flex;
+  align-items: flex-start;
+  margin: 2px 0;
+}
+
+.list-number {
+  margin-right: 8px;
+  margin-top: 6px;
+  flex-shrink: 0;
+  color: #666;
+  min-width: 15px;
+  text-align: right;
+}
+
+.ordered-list-textarea {
+  flex: 1;
+  padding-left: 4px;
+}
+
+/* Задачи */
+.task-item-block {
+  display: flex;
+  align-items: flex-start;
+  margin: 2px 0;
+}
+
+.task-checkbox {
+  margin-right: 8px;
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+
+.task-textarea {
+  flex: 1;
+}
+
+.task-textarea.completed {
+  text-decoration: line-through;
+  color: #999;
+}
+
+/* Блоки уведомлений */
+.alert-block {
+  display: flex;
+  border-radius: 4px;
+  margin: 8px 0;
+  padding: 12px;
+  position: relative;
+}
+
+.alert-block:before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  border-radius: 4px 0 0 4px;
+}
+
+.alert-block.info {
+  background-color: #e3f2fd;
+}
+
+.alert-block.info:before {
+  background-color: #2196f3;
+}
+
+.alert-block.warning {
+  background-color: #fff9c4;
+}
+
+.alert-block.warning:before {
+  background-color: #ffc107;
+}
+
+.alert-block.error {
+  background-color: #ffebee;
+}
+
+.alert-block.error:before {
+  background-color: #f44336;
+}
+
+.alert-block.success {
+  background-color: #e8f5e9;
+}
+
+.alert-block.success:before {
+  background-color: #4caf50;
+}
+
+.alert-icon-container {
+  flex-shrink: 0;
+  width: 24px;
+  margin-right: 12px;
+  display: flex;
+  justify-content: center;
+}
+
+.alert-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.alert-type-label {
+  font-weight: bold;
+  margin-bottom: 4px;
+  font-size: 0.9em;
+  opacity: 0.8;
+}
+
+.alert-textarea {
+  flex: 1;
+  background-color: transparent;
+  padding: 4px 0;
+  border: none;
+  border-radius: 0;
+  min-height: 24px;
+  font-size: 0.95em;
+}
+
+.alert-textarea:focus {
+  background-color: rgba(255, 255, 255, 0.5);
+  outline: none;
+}
+
+.alert-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-weight: bold;
+  font-size: 14px;
+}
+
+.alert-icon.info {
+  background-color: #2196f3;
+  color: white;
+}
+
+.alert-icon.warning {
+  background-color: #ffc107;
+  color: black;
+}
+
+.alert-icon.error {
+  background-color: #f44336;
+  color: white;
+}
+
+.alert-icon.success {
+  background-color: #4caf50;
+  color: white;
+}
+
+/* Встраиваемый контент */
+.embed-block {
+  margin: 10px 0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.embed-preview {
+  position: relative;
+  width: 100%;
+  height: 0;
+  padding-bottom: 56.25%; /* 16:9 соотношение */
+}
+
+.embed-preview iframe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.embed-caption {
+  width: 100%;
+  padding: 8px;
+  border: none;
+  border-top: 1px solid #eee;
+  resize: none;
+  font-style: italic;
+}
+
+.embed-controls {
+  padding: 8px;
+  border-top: 1px solid #eee;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.embed-edit-btn {
+  padding: 4px 8px;
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.embed-edit-btn:hover {
+  background: #e0e0e0;
+}
+
+/* Подменю для уведомлений и встроенного контента */
+.alert-types-submenu,
+.embed-types-submenu {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+  min-width: 150px;
+  z-index: 1002;
+  margin-left: 5px; /* Добавляем отступ для лучшего наведения */
+}
+
+.alert-type-option,
+.embed-type-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.alert-type-option:hover,
+.embed-type-option:hover {
+  background-color: #f5f5f5;
+}
+
+.embed-icon {
+  width: 20px;
+  text-align: center;
+}
+
+/* Диалог для встраиваемого контента */
+.embed-dialog {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1002;
+}
+
+.embed-dialog-content {
+  background: white;
+  padding: 20px;
+  border-radius: 4px;
+  max-width: 400px;
+  width: 100%;
+}
+
+.embed-dialog h3 {
+  margin-top: 0;
+  margin-bottom: 20px;
+}
+
+.embed-dialog .form-group {
+  margin-bottom: 15px;
+}
+
+.embed-dialog .form-group label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+.embed-dialog .form-input {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.embed-dialog .embed-dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.embed-dialog .embed-dialog-buttons button {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.embed-dialog .embed-dialog-buttons button.primary {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.embed-dialog .embed-dialog-buttons button:hover {
+  background-color: #45a049;
+}
+
+/* CSS стили для iframe-блока */
+.iframe-block {
+  width: 100%;
+  border: 1px solid #eee;
+  border-radius: 4px;
+  margin-bottom: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.iframe-textarea {
+  margin-bottom: 5px;
+  font-family: monospace;
+  padding: 8px;
+  resize: vertical;
+}
+
+.iframe-preview {
+  width: 100%;
+  background-color: #f9f9f9;
+  overflow: hidden;
+  position: relative;
+  max-width: 100%;
+}
+
+.iframe-preview iframe {
+  border: none;
+  max-width: 100%;
+  width: 100%;
 }
 </style> 
