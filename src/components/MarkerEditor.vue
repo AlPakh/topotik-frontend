@@ -1252,7 +1252,7 @@ export default {
     },
     insertEmbed() {
       if (!this.embedUrl.trim()) {
-        alert('Пожалуйста, введите URL или ID');
+        this.$alert.error('Пожалуйста, введите URL или ID');
         return;
       }
       

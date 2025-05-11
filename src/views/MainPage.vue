@@ -11,6 +11,7 @@
         @moveItem="handleMoveItem"
         @renameItem="handleRenameItem"
         @deleteItem="confirmDeleteItem"
+        @showRootContents="showRootDirectory"
       />
 
       <!-- Правая панель -->
@@ -69,13 +70,32 @@
         </div>
         <div class="confirmation-buttons">
           <button 
-            @click="executeDelete" 
+            @click="initialConfirmDelete" 
             :disabled="deleteConfirmation.input !== deleteConfirmation.itemName"
             class="delete-button"
           >
             Удалить
           </button>
           <button @click="cancelDelete" class="cancel-button">Отмена</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Дополнительное модальное окно для подтверждения каскадного удаления папки -->
+    <div v-if="cascadeDeleteConfirmation.show" class="cascade-confirmation-overlay">
+      <div class="cascade-confirmation-dialog">
+        <h3>ВНИМАНИЕ!</h3>
+        <p class="danger-text">Все содержимое папки и подпапок будет удалено!</p>
+        <p>Это действие нельзя отменить. Продолжить?</p>
+        <div class="confirmation-buttons">
+          <button 
+            @click="executeDelete" 
+            :disabled="!cascadeDeleteConfirmation.buttonEnabled"
+            class="danger-button"
+          >
+            {{ cascadeDeleteConfirmation.buttonText }}
+          </button>
+          <button @click="cancelCascadeDelete" class="cancel-button">Отмена</button>
         </div>
       </div>
     </div>
@@ -116,8 +136,14 @@ export default {
         message: '',
         input: ''
       },
+      cascadeDeleteConfirmation: {
+        show: false,
+        buttonEnabled: false,
+        buttonText: 'Подтвердить (2)'
+      },
       loading: false,
-      error: null
+      error: null,
+      cascadeDeleteTimer: null
     }
   },
   async created() {
@@ -128,6 +154,24 @@ export default {
     this.selectRootFolder()
   },
   methods: {
+    // Новый метод для обновления представлений
+    refreshViews() {
+      // Обновляем структуру папок
+      this.loadFolderStructure();
+      
+      // Если текущий выбранный элемент - "Корневой каталог", обновляем его содержимое
+      if (this.selectedItem && this.selectedItem.id === 'root') {
+        this.selectedItem.children = this.getRootItems();
+      }
+      // Если выбрана папка, обновляем её содержимое
+      else if (this.selectedItem && this.selectedItem.type === 'folder') {
+        const updatedItem = this.findItemById(this.selectedItem.id, this.folderStructure);
+        if (updatedItem) {
+          this.selectedItem = updatedItem;
+        }
+      }
+    },
+    
     async loadFolderStructure() {
       this.loading = true
       this.error = null
@@ -153,7 +197,7 @@ export default {
       return data || []
     },
     
-    // Выбор корневой папки
+    // Выбор корневой папки или корневого каталога, если папок нет
     selectRootFolder() {
       if (this.folderStructure.length > 0) {
         // Ищем первую папку в структуре
@@ -161,9 +205,12 @@ export default {
         if (firstFolder) {
           this.selectedItem = firstFolder
         } else {
-          // Если папок нет, берем первый элемент
-          this.selectedItem = this.folderStructure[0]
+          // Если папок нет, показываем корневой каталог
+          this.showRootDirectory()
         }
+      } else {
+        // Если структура пустая, показываем корневой каталог
+        this.showRootDirectory()
       }
     },
     
@@ -239,35 +286,85 @@ export default {
         
         // Показываем уведомление только если статус ответа указывает на ошибку
         if (err.response && err.response.status >= 400) {
-          alert(`Не удалось переименовать элемент: ${err.response.data?.detail || 'Неизвестная ошибка'}`)
+          this.$alert.error(`Не удалось переименовать элемент: ${err.response.data?.detail || 'Неизвестная ошибка'}`)
         }
+      } finally {
+        // Обновляем представления независимо от результата операции
+        this.refreshViews();
       }
     },
     
-    async handleMoveItem({ sourceId, targetId }) {
+    async handleMoveItem({ sourceId, targetId, checkCycle }) {
       try {
-        // Найдем исходный элемент и целевую папку
-        const sourceItem = this.findItemById(sourceId, this.folderStructure)
+        // Найдем исходный элемент
+        const sourceItem = this.findItemById(sourceId, this.folderStructure);
         
-        if (!sourceItem) return
+        if (!sourceItem) return;
+        
+        // Проверка на перемещение папки в свою дочернюю папку, только если задан флаг checkCycle
+        if (sourceItem.type === 'folder' && targetId !== null && checkCycle && this.isDescendantFolder(sourceId, targetId)) {
+          this.$alert.error('Нельзя переместить папку в одну из её подпапок. Это может создать циклическую зависимость.');
+          return;
+        }
         
         if (sourceItem.type === 'map') {
           // Перемещаем карту через API
-          await moveMapToFolder(sourceId, targetId)
+          // Если targetId = null, перемещаем в корневой каталог
+          await moveMapToFolder(sourceId, targetId);
         } else if (sourceItem.type === 'folder') {
           // Перемещаем папку через API
-          await moveFolder(sourceId, targetId)
+          // Если targetId = null, перемещаем в корневой каталог
+          await moveFolder(sourceId, targetId);
         }
         
         // Обновляем структуру после перемещения
-        await this.loadFolderStructure()
+        await this.loadFolderStructure();
+        
+        // Если текущий выбранный элемент - "Корневой каталог", обновляем его содержимое
+        if (this.selectedItem && this.selectedItem.id === 'root') {
+          this.selectedItem.children = this.getRootItems();
+        }
       } catch (err) {
-        console.error('Ошибка при перемещении:', err)
+        console.error('Ошибка при перемещении:', err);
         // Показываем уведомление только если статус ответа указывает на ошибку
         if (err.response && err.response.status >= 400) {
-          alert(`Не удалось переместить элемент: ${err.response.data?.detail || 'Неизвестная ошибка'}`)
+          this.$alert.error(`Не удалось переместить элемент: ${err.response.data?.detail || 'Неизвестная ошибка'}`);
         }
+      } finally {
+        // Обновляем представления независимо от результата операции
+        this.refreshViews();
       }
+    },
+    
+    // Проверяет, является ли целевая папка дочерней (прямо или косвенно) для исходной папки
+    isDescendantFolder(sourceFolderId, targetFolderId) {
+      // Проверка простого случая - перемещение в ту же папку
+      if (sourceFolderId === targetFolderId) return true;
+      
+      // Найдем целевую папку
+      const targetFolder = this.findItemById(targetFolderId, this.folderStructure);
+      if (!targetFolder || targetFolder.type !== 'folder') return false;
+      
+      // Рекурсивная проверка - проходим по всем дочерним папкам исходной папки
+      // и проверяем, нет ли среди них нашей целевой папки
+      const checkChildren = (parentId) => {
+        const parent = this.findItemById(parentId, this.folderStructure);
+        if (!parent || !parent.children) return false;
+        
+        // Проверяем всех непосредственных детей
+        for (const child of parent.children) {
+          if (child.type === 'folder') {
+            // Если нашли совпадение по ID, значит целевая папка - потомок исходной
+            if (child.id === targetFolderId) return true;
+            // Иначе проверяем детей этого ребенка
+            if (checkChildren(child.id)) return true;
+          }
+        }
+        
+        return false;
+      };
+      
+      return checkChildren(sourceFolderId);
     },
     
     findItemById(id, items) {
@@ -314,8 +411,8 @@ export default {
           is_public: false
         }
         
-        // Если выбрана папка, добавляем ее ID в запрос
-        if (this.selectedItem && this.selectedItem.type === 'folder') {
+        // Если выбрана папка (и это не виртуальный корневой каталог), добавляем ее ID в запрос
+        if (this.selectedItem && this.selectedItem.type === 'folder' && this.selectedItem.id !== 'root') {
           mapData.folder_id = this.selectedItem.id
           // Также используем ID текущей папки для более надежного добавления
           mapData.current_folder_id = this.selectedItem.id
@@ -327,14 +424,25 @@ export default {
         // Обновляем структуру после создания
         await this.loadFolderStructure()
         
+        // Если текущий выбранный элемент - "Корневой каталог", обновляем его содержимое
+        if (this.selectedItem && this.selectedItem.id === 'root') {
+          this.selectedItem.children = this.getRootItems();
+        }
+        
         // Закрываем панель создания
         this.showCreatePanel = false
+        
+        // Показываем уведомление об успешном создании
+        this.$alert.success(`Карта "${mapName}" успешно создана`)
       } catch (err) {
         console.error('Ошибка при создании карты:', err)
         // Показываем уведомление только если статус ответа указывает на ошибку
         if (err.response && err.response.status >= 400) {
-          alert(`Не удалось создать карту: ${err.response.data?.detail || 'Неизвестная ошибка'}`)
+          this.$alert.error(`Не удалось создать карту: ${err.response.data?.detail || 'Неизвестная ошибка'}`)
         }
+      } finally {
+        // Обновляем представления независимо от результата операции
+        this.refreshViews();
       }
     },
     
@@ -345,8 +453,8 @@ export default {
           title: folderName
         }
         
-        // Если выбрана папка, добавляем ее как родительскую
-        if (this.selectedItem && this.selectedItem.type === 'folder') {
+        // Если выбрана папка (и это не виртуальный корневой каталог), добавляем ее как родительскую
+        if (this.selectedItem && this.selectedItem.type === 'folder' && this.selectedItem.id !== 'root') {
           folderData.parent_folder_id = this.selectedItem.id
         }
         
@@ -356,14 +464,25 @@ export default {
         // Обновляем структуру после создания
         await this.loadFolderStructure()
         
+        // Если текущий выбранный элемент - "Корневой каталог", обновляем его содержимое
+        if (this.selectedItem && this.selectedItem.id === 'root') {
+          this.selectedItem.children = this.getRootItems();
+        }
+        
         // Закрываем панель создания
         this.showCreatePanel = false
+        
+        // Показываем уведомление об успешном создании
+        this.$alert.success(`Папка "${folderName}" успешно создана`)
       } catch (err) {
         console.error('Ошибка при создании папки:', err)
         // Показываем уведомление только если статус ответа указывает на ошибку
         if (err.response && err.response.status >= 400) {
-          alert(`Не удалось создать папку: ${err.response.data?.detail || 'Неизвестная ошибка'}`)
+          this.$alert.error(`Не удалось создать папку: ${err.response.data?.detail || 'Неизвестная ошибка'}`)
         }
+      } finally {
+        // Обновляем представления независимо от результата операции
+        this.refreshViews();
       }
     },
     
@@ -380,41 +499,94 @@ export default {
       }
     },
     
-    async executeDelete() {
-      if (this.deleteConfirmation.input !== this.deleteConfirmation.itemName) {
-        return
-      }
-      
-      try {
-        if (this.deleteConfirmation.itemType === 'folder') {
-          // Удаляем папку через API
-          await deleteFolder(this.deleteConfirmation.itemId)
-        } else {
-          // Удаляем карту через API
-          await deleteMap(this.deleteConfirmation.itemId)
-        }
-        
-        // Обновляем структуру после удаления
-        await this.loadFolderStructure()
-        
-        // Если удаляемый элемент был выбран, сбрасываем выбор и выбираем корневую папку
-        if (this.selectedItem && this.selectedItem.id === this.deleteConfirmation.itemId) {
-          this.selectRootFolder()
-        }
-        
-        // Закрываем диалог подтверждения
-        this.cancelDelete()
-      } catch (err) {
-        console.error('Ошибка при удалении:', err)
-        // Показываем уведомление только если статус ответа указывает на ошибку
-        if (err.response && err.response.status >= 400) {
-          alert(`Не удалось удалить элемент: ${err.response.data?.detail || 'Неизвестная ошибка'}`)
-        } else {
-          // Закрываем диалог даже при ошибке, если она не от сервера
-          this.cancelDelete()
-        }
+    initialConfirmDelete() {
+      // Если это папка, показываем дополнительное предупреждение о каскадном удалении
+      if (this.deleteConfirmation.itemType === 'folder') {
+        this.showCascadeDeleteConfirmation();
+      } else {
+        // Если это не папка, сразу выполняем удаление
+        this.executeDelete();
       }
     },
+    
+    showCascadeDeleteConfirmation() {
+      // Показываем дополнительное окно подтверждения
+      this.cascadeDeleteConfirmation.show = true;
+      this.cascadeDeleteConfirmation.buttonEnabled = false;
+      this.cascadeDeleteConfirmation.buttonText = 'Подтвердить (2)';
+      
+      // Запускаем таймер, который будет обновлять текст и активировать кнопку через 2 секунды
+      let countdown = 2;
+      this.cascadeDeleteTimer = setInterval(() => {
+        countdown--;
+        if (countdown <= 0) {
+          this.cascadeDeleteConfirmation.buttonEnabled = true;
+          this.cascadeDeleteConfirmation.buttonText = 'Подтвердить';
+          clearInterval(this.cascadeDeleteTimer);
+        } else {
+          this.cascadeDeleteConfirmation.buttonText = `Подтвердить (${countdown})`;
+        }
+      }, 1000);
+    },
+    
+    cancelCascadeDelete() {
+      // Отменяем дополнительное подтверждение и очищаем таймер
+      this.cascadeDeleteConfirmation.show = false;
+      if (this.cascadeDeleteTimer) {
+        clearInterval(this.cascadeDeleteTimer);
+        this.cascadeDeleteTimer = null;
+      }
+    },
+    
+    async executeDelete() {
+      try {
+        const { itemId, itemType, itemName } = this.deleteConfirmation;
+        
+        if (itemType === 'folder') {
+          // Удаляем папку через API
+          await deleteFolder(itemId);
+        } else if (itemType === 'map') {
+          // Удаляем карту через API
+          await deleteMap(itemId);
+        }
+        
+        // Показываем уведомление об успешном удалении
+        this.$alert.success(`${itemType === 'folder' ? 'Папка' : 'Карта'} "${itemName}" успешно удалена`);
+        
+        // Обновляем структуру после удаления
+        await this.loadFolderStructure();
+        
+        // Если текущий выбранный элемент - "Корневой каталог", обновляем его содержимое
+        if (this.selectedItem && this.selectedItem.id === 'root') {
+          this.selectedItem.children = this.getRootItems();
+        }
+        
+        // Если удаленный элемент был выбран, переключаемся на корневую папку
+        if (this.selectedItem && this.selectedItem.id === itemId) {
+          this.selectRootFolder();
+        }
+      } catch (err) {
+        console.error('Ошибка при удалении:', err);
+        // Показываем уведомление только если статус ответа указывает на ошибку
+        if (err.response && err.response.status >= 400) {
+          this.$alert.error(`Не удалось удалить элемент: ${err.response.data?.detail || 'Неизвестная ошибка'}`);
+        }
+      } finally {
+        // Сбрасываем состояние диалогов подтверждения
+        this.deleteConfirmation.show = false;
+        this.cascadeDeleteConfirmation.show = false;
+        
+        // Очищаем таймер, если он был запущен
+        if (this.cascadeDeleteTimer) {
+          clearInterval(this.cascadeDeleteTimer);
+          this.cascadeDeleteTimer = null;
+        }
+        
+        // Обновляем представления независимо от результата операции
+        this.refreshViews();
+      }
+    },
+    
     cancelDelete() {
       this.deleteConfirmation = {
         show: false,
@@ -423,10 +595,122 @@ export default {
         itemType: '',
         message: '',
         input: ''
-      }
+      };
+      // Также отменяем каскадное подтверждение, если оно было открыто
+      this.cancelCascadeDelete();
+    },
+    
+    // Показать корневой каталог (элементы без родительских папок)
+    showRootDirectory() {
+      // Создаем виртуальный элемент для представления корневого каталога
+      const rootFolder = {
+        id: 'root', // Символический ID, не используется в запросах к API
+        type: 'folder',
+        name: 'Корневой каталог',
+        children: this.getRootItems()
+      };
+      
+      // Выбираем этот виртуальный элемент для отображения
+      this.selectedItem = rootFolder;
+      
+      // Закрываем панель создания, если она была открыта
+      this.showCreatePanel = false;
+    },
+    
+    // Получить элементы корневого каталога (без родительских папок)
+    getRootItems() {
+      return this.folderStructure.filter(item => {
+        if (item.type === 'folder') {
+          // Включаем только корневые папки (без родительской папки)
+          return !item.parent_folder_id;
+        } else {
+          // Для карт проверяем, есть ли они в корневом каталоге
+          return true; // Фильтрация карт выполняется на сервере
+        }
+      });
+    },
+  },
+  
+  beforeUnmount() {
+    // Очищаем таймер при уничтожении компонента
+    if (this.cascadeDeleteTimer) {
+      clearInterval(this.cascadeDeleteTimer);
     }
   }
 }
 </script>
 
 <style scoped src="@/assets/css/views/MainPage.css"></style>
+
+<style scoped>
+/* Стили для дополнительного диалогового окна каскадного удаления */
+.cascade-confirmation-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1100; /* Выше чем обычное подтверждение */
+}
+
+.cascade-confirmation-dialog {
+  background-color: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  padding: 24px;
+  width: 90%;
+  max-width: 500px;
+  text-align: center;
+}
+
+.danger-text {
+  color: #ff0000;
+  font-weight: bold;
+  font-size: 18px;
+  margin: 16px 0;
+}
+
+.confirmation-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.danger-button {
+  background-color: #ff3b30;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.danger-button:hover:not(:disabled) {
+  background-color: #ff5e54;
+}
+
+.danger-button:disabled {
+  background-color: #ffccc9;
+  cursor: not-allowed;
+}
+
+.cancel-button {
+  background-color: #f1f1f1;
+  color: #333;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.cancel-button:hover {
+  background-color: #ddd;
+}
+</style>

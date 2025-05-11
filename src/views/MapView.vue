@@ -783,7 +783,7 @@ export default {
     
     createMarker() {
       if (this.categories.length === 0) {
-        alert('Сначала создайте категорию для меток');
+        this.$alert.error('Сначала создайте категорию для меток');
         return;
       }
       
@@ -800,7 +800,7 @@ export default {
         const category = this.categories.find(c => c.id === id);
         
         if (!category) {
-          alert('Категория не найдена');
+          this.$alert.error('Категория не найдена');
           return;
         }
         
@@ -811,7 +811,7 @@ export default {
       if (name && name.trim()) {
         // Запоминаем категорию для следующего клика на карту
         this.pendingMarkerCategory = categoryId;
-        alert('Кликните на карту, чтобы разместить метку');
+        this.$alert.show('Кликните на карту, чтобы разместить метку');
         this.showCreatePanel = false;
       }
     },

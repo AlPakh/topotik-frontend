@@ -66,10 +66,20 @@ export default {
       
       // Если целевой элемент - папка, переместить внутрь
       if (targetItem.type === 'folder') {
-        this.$emit('moveItem', { 
-          sourceId: sourceItemData.id, 
-          targetId: targetItem.id 
-        })
+        // Если источник - тоже папка, добавляем флаг проверки на циклическую зависимость
+        if (sourceItemData.type === 'folder') {
+          this.$emit('moveItem', { 
+            sourceId: sourceItemData.id, 
+            targetId: targetItem.id,
+            checkCycle: true
+          })
+        } else {
+          // Для карт просто перемещаем
+          this.$emit('moveItem', { 
+            sourceId: sourceItemData.id, 
+            targetId: targetItem.id 
+          })
+        }
       }
     },
     highlightItem(event) {

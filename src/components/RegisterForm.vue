@@ -2,7 +2,9 @@
 <template>
   <div class="login-container">
     <div class="login-form">
-      <h2 class="app-title">ΤοποΤικ</h2>
+      <div class="logo-container">
+        <svg-logo width="240px" height="70px" />
+      </div>
       
       <div v-if="error" class="error-message">
         {{ error }}
@@ -64,9 +66,14 @@
 import { ref, computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { register } from '../services/auth';
+// Импортируем компонент логотипа
+import SvgLogo from '@/components/SvgLogo.vue';
 
 export default {
   name: 'RegisterForm',
+  components: {
+    SvgLogo
+  },
   
   setup() {
     const router = useRouter();
@@ -125,3 +132,16 @@ export default {
 </script>
 
 <style scoped src="@/assets/css/components/LoginPage.css"></style> 
+
+<style scoped>
+/* Улучшенные стили для контейнера логотипа */
+.logo-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0 auto 30px;
+  width: 240px;
+  height: 70px;
+  overflow: visible;
+}
+</style> 

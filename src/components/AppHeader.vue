@@ -48,17 +48,18 @@ export default {
 
 <style scoped>
 .app-header {
+  min-height: 5rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 2rem;
+  padding: 0 2rem;
   background-color: #fff;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .app-title {
   margin: 0;
-  font-size: 1.5rem;
+  font-size: 2.5rem;
   color: #4CAF50;
   cursor: pointer;
   transition: color 0.3s ease;
@@ -96,7 +97,7 @@ export default {
   background-color: #4CAF50;
   color: white;
   border-radius: 50%;
-  font-size: 1rem;
+  font-size: 2,5rem;
   font-weight: bold;
 }
 </style> 

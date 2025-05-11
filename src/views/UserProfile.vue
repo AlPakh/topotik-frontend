@@ -40,7 +40,7 @@
 </template>
 
 <script>
-import { ref, computed, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, getCurrentInstance } from 'vue'
 import { useRouter } from 'vue-router'
 import AppHeader from '@/components/AppHeader.vue'
 import { getCurrentUser, updateUser, checkAvailability } from '@/services/users'
@@ -55,6 +55,7 @@ export default {
   },
   setup() {
     const router = useRouter()
+    const { proxy } = getCurrentInstance()
     const loading = ref(true)
     const username = ref('')
     const originalUsername = ref('')
@@ -178,7 +179,7 @@ export default {
         newPassword.value = ''
         confirmPassword.value = ''
         
-        alert('Изменения сохранены')
+        proxy.$alert.success('Изменения сохранены')
       } catch (error) {
         console.error('Ошибка при сохранении:', error)
         if (error.response?.status === 400) {
@@ -187,10 +188,10 @@ export default {
           } else if (error.response.data.detail.includes('Username')) {
             usernameError.value = 'Это имя пользователя уже занято'
           } else {
-            alert('Ошибка при сохранении: ' + error.response.data.detail)
+            proxy.$alert.error('Ошибка при сохранении: ' + error.response.data.detail)
           }
         } else {
-          alert('Ошибка при сохранении изменений')
+          proxy.$alert.error('Ошибка при сохранении изменений')
         }
       } finally {
         isSaving.value = false

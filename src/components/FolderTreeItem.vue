@@ -154,14 +154,25 @@ export default {
       
       // Только папки могут быть целью для перетаскивания
       if (this.item.type === 'folder') {
-        this.$emit('moveItem', { 
-          sourceId: sourceItemData.id, 
-          targetId: this.item.id 
-        })
-        
-        // Автоматически раскрываем папку при перетаскивании в нее
-        if (!this.isOpen) {
-          this.isOpen = true
+        // Если пытаемся переместить папку, проверяем, что не создаем циклическую зависимость
+        if (sourceItemData.type === 'folder') {
+          // Генерируем событие moveItem с дополнительным полем для проверки на циклическую зависимость
+          this.$emit('moveItem', { 
+            sourceId: sourceItemData.id, 
+            targetId: this.item.id,
+            checkCycle: true // Добавляем флаг для проверки на циклическую зависимость
+          })
+        } else {
+          // Для карт просто перемещаем
+          this.$emit('moveItem', { 
+            sourceId: sourceItemData.id, 
+            targetId: this.item.id 
+          })
+          
+          // Автоматически раскрываем папку при перетаскивании в нее
+          if (!this.isOpen) {
+            this.isOpen = true
+          }
         }
       }
     },
