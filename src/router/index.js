@@ -3,6 +3,7 @@ import MainPage from '@/views/MainPage.vue'
 import MapView from '@/views/MapView.vue'
 import { isAuthenticated } from '@/services/auth'
 import LoginPage from '@/components/LoginPage.vue'
+import UserProfile from '@/views/UserProfile.vue'
 
 // Обновленные маршруты
 const routes = [
@@ -51,6 +52,12 @@ const routes = [
         path: '/collections/:id',
         name: 'CollectionDetails',
         component: () => import('@/views/CollectionDetails.vue'),
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/lk',
+        name: 'UserProfile',
+        component: UserProfile,
         meta: { requiresAuth: true }
     },
     {

@@ -1,78 +1,76 @@
-import { api } from '../api';
+import { api } from '@/api'
 
 /**
- * Получение списка карт
- * @param {number} skip - сколько пропустить
- * @param {number} limit - сколько получить
- * @returns {Promise} результат запроса
+ * Получить список всех карт пользователя
  */
-export const getMaps = async (skip = 0, limit = 100) => {
-    try {
-        const response = await api.get(`/maps?skip=${skip}&limit=${limit}`);
-        return response.data;
-    } catch (error) {
-        console.error('Ошибка получения карт:', error);
-        throw error;
-    }
-};
+export const getUserMaps = async () => {
+    const response = await api.get('/maps/user')
+    return response.data
+}
 
 /**
- * Получение карты по ID
+ * Получить все доступные карты (аналогично getUserMaps, для совместимости)
+ */
+export const getMaps = async () => {
+    const response = await api.get('/maps/user')
+    return response.data
+}
+
+/**
+ * Получить карту по ID
  * @param {string} mapId - ID карты
- * @returns {Promise} результат запроса
  */
 export const getMapById = async (mapId) => {
-    try {
-        const response = await api.get(`/maps/${mapId}`);
-        return response.data;
-    } catch (error) {
-        console.error(`Ошибка получения карты с ID ${mapId}:`, error);
-        throw error;
-    }
-};
+    const response = await api.get(`/maps/${mapId}`)
+    return response.data
+}
 
 /**
- * Создание новой карты
- * @param {Object} mapData - данные карты
- * @returns {Promise} результат запроса
+ * Создать новую карту
+ * @param {Object} mapData - Данные карты
+ * @param {string} mapData.title - Название карты
+ * @param {string} mapData.map_type - Тип карты ('osm' или 'custom_image')
+ * @param {boolean} mapData.is_public - Является ли карта публичной
+ * @param {string} [mapData.folder_id] - ID папки, в которую добавить карту (опционально)
  */
 export const createMap = async (mapData) => {
-    try {
-        const response = await api.post('/maps', mapData);
-        return response.data;
-    } catch (error) {
-        console.error('Ошибка создания карты:', error);
-        throw error;
-    }
-};
+    const response = await api.post('/maps/', mapData)
+    return response.data
+}
 
 /**
- * Обновление карты
+ * Обновить существующую карту
  * @param {string} mapId - ID карты
- * @param {Object} mapData - новые данные карты
- * @returns {Promise} результат запроса
+ * @param {Object} mapData - Данные для обновления
  */
 export const updateMap = async (mapId, mapData) => {
-    try {
-        const response = await api.put(`/maps/${mapId}`, mapData);
-        return response.data;
-    } catch (error) {
-        console.error(`Ошибка обновления карты с ID ${mapId}:`, error);
-        throw error;
-    }
-};
+    const response = await api.put(`/maps/${mapId}`, mapData)
+    return response.data
+}
 
 /**
- * Удаление карты
+ * Переместить карту в другую папку
  * @param {string} mapId - ID карты
- * @returns {Promise} результат запроса
+ * @param {string} folderId - ID новой папки
+ */
+export const moveMapToFolder = async (mapId, folderId) => {
+    const response = await api.put(`/maps/${mapId}/move`, { folder_id: folderId })
+    return response.data
+}
+
+/**
+ * Удалить карту
+ * @param {string} mapId - ID карты
  */
 export const deleteMap = async (mapId) => {
-    try {
-        const response = await api.delete(`/maps/${mapId}`);
-        return response.data;
-    } catch (error) {
-        console.error(`Ошибка удаления карты с ID ${mapId}:`, error);
-        throw error;
-    }
-}; 
+    const response = await api.delete(`/maps/${mapId}`)
+    return response.data
+}
+
+/**
+ * Получить структуру папок и карт пользователя
+ */
+export const getFolderStructure = async () => {
+    const response = await api.get('/folders/structure')
+    return response.data
+} 

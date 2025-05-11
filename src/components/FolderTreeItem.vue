@@ -3,7 +3,7 @@
     <div class="item-line"
          @click="onSelectItem"
          @mouseover="hovered = true"
-         @mouseleave="hovered = false"
+         @mouseleave="handleMouseLeave"
          draggable="true"
          @dragstart="onDragStart"
          @dragover.prevent="onDragOver"
@@ -12,31 +12,30 @@
          @dragleave="dragEnter = false"
          :class="{ 'drag-over': dragEnter }">
       <!-- Иконка в зависимости от типа -->
-      <span v-if="item.type === 'folder'" class="folder-icon">
-        <span v-if="isOpen">📂</span>
-        <span v-else>📁</span>
-      </span>
-      <span v-else-if="item.mapType === 'real'" class="icon">🗺️</span>
-      <span v-else class="icon">🗒️</span>
+      <div v-if="item.type === 'folder'" class="folder-icon" :class="{ 'hovered': hovered }">
+        <div v-if="!hovered">
+          <div v-if="isOpen">📂</div>
+          <div v-else>📁</div>
+        </div>
+        <div v-else class="arrow-icon" :class="{ 'arrow-down': isOpen }" @click.stop="toggleFolder">
+          <img src="../assets/svg/arrow.svg" alt="Arrow" />
+        </div>
+      </div>
+      <div v-else-if="item.mapType === 'real'" class="icon">🗺️</div>
+      <div v-else class="icon">📔</div>
 
       <span class="item-name" :title="item.name">{{ displayName }}</span>
 
-      <!-- Если название слишком длинное, CSS может его обрезать. 
-           При наведении справа появляется «три точки» -->
-      <button v-if="hovered" class="dots-button" @click.stop="toggleMenu">
+      <!-- Кнопка с тремя точками (всегда в разметке) -->
+      <button class="dots-button" @click.stop="toggleMenu">
         ⋮
       </button>
 
       <!-- Контекстное меню -->
-      <div v-if="showMenu" class="context-menu">
+      <div v-if="showMenu" class="context-menu" @mouseover="menuHovered = true" @mouseleave="menuHovered = false">
         <button @click="renameItem">Переименовать</button>
         <button @click="deleteItem" class="delete-button">Удалить</button>
       </div>
-
-      <!-- Если это папка, отображаем стрелочку раскрывания -->
-      <span v-if="item.type === 'folder'" class="toggle-folder" @click.stop="toggleFolder">
-        {{ isOpen ? '▾' : '▸' }}
-      </span>
     </div>
 
     <!-- Список дочерних элементов (если это папка) -->
@@ -71,9 +70,11 @@ export default {
   data() {
     return {
       hovered: false,
+      menuHovered: false,
       showMenu: false,
       isOpen: false,
-      dragEnter: false
+      dragEnter: false,
+      closeMenuTimer: null
     }
   },
   computed: {
@@ -93,8 +94,21 @@ export default {
     toggleMenu() {
       this.showMenu = !this.showMenu
     },
+    handleMouseLeave() {
+      this.hovered = false
+      
+      // Закрываем меню с задержкой, чтобы можно было навести курсор на само меню
+      clearTimeout(this.closeMenuTimer)
+      this.closeMenuTimer = setTimeout(() => {
+        if (!this.menuHovered) {
+          this.showMenu = false
+        }
+      }, 300)
+    },
     renameItem() {
       this.showMenu = false
+      // Удаляем проверку типа карты
+      
       const newName = prompt('Новое имя?', this.item.name)
       if (newName) {
         // Вместо прямого изменения свойства item.name, генерируем событие
@@ -106,6 +120,8 @@ export default {
     },
     deleteItem() {
       this.showMenu = false
+      // Удаляем проверку типа карты
+      
       this.$emit('deleteItem', { 
         id: this.item.id, 
         name: this.item.name,
@@ -153,6 +169,10 @@ export default {
       // Прокидываем событие дальше наверх
       this.$emit('moveItem', moveData)
     }
+  },
+  beforeUnmount() {
+    // Очищаем таймер при уничтожении компонента
+    clearTimeout(this.closeMenuTimer)
   }
 }
 </script>

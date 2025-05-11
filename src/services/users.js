@@ -32,17 +32,49 @@ export const getUserById = async (userId) => {
 };
 
 /**
- * Получение текущего пользователя (требует токен)
- * @returns {Promise} результат запроса
+ * Получение данных текущего пользователя
+ * @returns {Promise} результат запроса с данными пользователя
  */
 export const getCurrentUser = async () => {
     try {
-        // Получаем ID из токена (предполагается, что бэкенд возвращает такой эндпоинт)
-        // В FastAPI коде этого эндпоинта нет, возможно придется его добавить на бэкенде
         const response = await api.get('/users/me');
         return response.data;
     } catch (error) {
-        console.error('Ошибка получения текущего пользователя:', error);
+        console.error('Ошибка получения пользователя:', error);
+        throw error;
+    }
+};
+
+/**
+ * Обновление данных пользователя
+ * @param {Object} userData - данные для обновления (username, email, password)
+ * @returns {Promise} результат запроса с обновленными данными
+ */
+export const updateUser = async (userData) => {
+    try {
+        const response = await api.put(`/users/me`, userData);
+        return response.data;
+    } catch (error) {
+        console.error('Ошибка обновления пользователя:', error);
+        throw error;
+    }
+};
+
+/**
+ * Проверка доступности email и username
+ * @param {string} email - email для проверки
+ * @param {string} username - имя пользователя для проверки
+ * @returns {Promise} результат запроса с флагами существования
+ */
+export const checkAvailability = async (email, username) => {
+    try {
+        const response = await api.post('/users/check-availability', {
+            email,
+            username
+        });
+        return response.data;
+    } catch (error) {
+        console.error('Ошибка проверки доступности:', error);
         throw error;
     }
 }; 

@@ -42,7 +42,7 @@
 }
 
 .name-input {
-    width: 100%;
+    width: calc(100% - 25px);
     padding: 12px;
     border: 1px solid #ddd;
     border-radius: 4px;

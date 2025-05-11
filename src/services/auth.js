@@ -1,4 +1,5 @@
 import { api, setAuthToken } from '../api';
+import Cookies from 'js-cookie';
 
 /**
  * Регистрация нового пользователя
@@ -8,6 +9,17 @@ import { api, setAuthToken } from '../api';
 export const register = async (userData) => {
     try {
         const response = await api.post('/auth/register', userData);
+        const { access_token, token_type, username } = response.data;
+
+        // Сохраняем данные в cookies
+        Cookies.set('access_token', access_token, { expires: 15 }); // 15 дней
+        Cookies.set('token_type', token_type, { expires: 15 });
+        Cookies.set('username', username, { expires: 15 });
+        Cookies.set('email', userData.email, { expires: 15 });
+
+        // Устанавливаем токен для всех запросов
+        setAuthToken(access_token);
+
         return response.data;
     } catch (error) {
         console.error('Ошибка регистрации:', error);
@@ -23,21 +35,18 @@ export const register = async (userData) => {
  */
 export const login = async (email, password) => {
     try {
-        const formData = new FormData();
-        formData.append('username', email); // API ожидает username, но использует email
-        formData.append('password', password);
-
-        const response = await api.post('/auth/login', formData, {
-            headers: {
-                'Content-Type': 'application/x-www-form-urlencoded'
-            }
+        const response = await api.post('/auth/login', {
+            username: email,
+            password: password
         });
 
-        const { access_token, token_type } = response.data;
+        const { access_token, token_type, username, email: userEmail } = response.data;
 
-        // Сохраняем токен в localStorage
-        localStorage.setItem('access_token', access_token);
-        localStorage.setItem('token_type', token_type);
+        // Сохраняем данные в cookies
+        Cookies.set('access_token', access_token, { expires: 15 }); // 15 дней
+        Cookies.set('token_type', token_type, { expires: 15 });
+        Cookies.set('username', username, { expires: 15 });
+        Cookies.set('email', userEmail, { expires: 15 });
 
         // Устанавливаем токен для всех запросов
         setAuthToken(access_token);
@@ -45,6 +54,17 @@ export const login = async (email, password) => {
         return response.data;
     } catch (error) {
         console.error('Ошибка входа:', error);
+        console.error('Детали ошибки:', error.response?.data);
+
+        if (error.response) {
+            if (error.response.status === 401) {
+                throw new Error('Неверный email или пароль');
+            } else if (error.response.status === 500) {
+                throw new Error('Ошибка сервера. Пожалуйста, попробуйте позже.');
+            } else {
+                throw new Error(error.response.data?.detail || 'Ошибка при входе');
+            }
+        }
         throw error;
     }
 };
@@ -52,13 +72,21 @@ export const login = async (email, password) => {
 /**
  * Выход пользователя из системы
  */
-export const logout = () => {
-    // Удаляем токен из localStorage
-    localStorage.removeItem('access_token');
-    localStorage.removeItem('token_type');
+export const logout = async () => {
+    try {
+        await api.post('/auth/logout');
+    } catch (error) {
+        console.error('Ошибка при выходе:', error);
+    } finally {
+        // Удаляем все cookies
+        Cookies.remove('access_token');
+        Cookies.remove('token_type');
+        Cookies.remove('username');
+        Cookies.remove('email');
 
-    // Удаляем токен из заголовков запросов
-    setAuthToken(null);
+        // Удаляем токен из заголовков запросов
+        setAuthToken(null);
+    }
 };
 
 /**
@@ -66,5 +94,21 @@ export const logout = () => {
  * @returns {boolean} результат проверки
  */
 export const isAuthenticated = () => {
-    return !!localStorage.getItem('access_token');
+    return !!Cookies.get('access_token');
+};
+
+/**
+ * Получение имени пользователя
+ * @returns {string} имя пользователя или 'Гость'
+ */
+export const getUsername = () => {
+    return Cookies.get('username') || 'Гость';
+};
+
+/**
+ * Получение email пользователя
+ * @returns {string} email пользователя или пустая строка
+ */
+export const getUserEmail = () => {
+    return Cookies.get('email') || '';
 }; 

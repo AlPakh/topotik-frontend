@@ -5,18 +5,8 @@
       <button class="close-button" @click="$emit('close')">&times;</button>
     </div>
     
-    <div class="input-group">
-      <label for="new-name">Название:</label>
-      <input 
-        id="new-name"
-        v-model="newName" 
-        placeholder="Введите название..." 
-        class="name-input"
-      />
-    </div>
-    
     <div class="card-container">
-      <div class="create-card" @click="createMap('real')">
+      <div class="create-card" @click="showDialog('map-real')">
         <div class="card-icon">
           <img src="@/assets/img/city.png" alt="Карта местности" />
         </div>
@@ -26,7 +16,7 @@
         </div>
       </div>
       
-      <div class="create-card" @click="createMap('custom')">
+      <div class="create-card" @click="showDialog('map-custom')">
         <div class="card-icon">
           <img src="@/assets/img/custom.png" alt="Пользовательская карта" />
         </div>
@@ -36,7 +26,7 @@
         </div>
       </div>
       
-      <div class="create-card" @click="createFolder">
+      <div class="create-card" @click="showDialog('folder')">
         <div class="card-icon">
           <img src="@/assets/img/folder.png" alt="Папка" />
         </div>
@@ -46,37 +36,50 @@
         </div>
       </div>
     </div>
+
+    <!-- Диалоговое окно для создания элементов -->
+    <create-item-dialog
+      :show="showItemDialog"
+      :item-type="selectedItemType"
+      @create="handleCreateItem"
+      @cancel="cancelDialog"
+    />
   </div>
 </template>
 
 <script>
+import CreateItemDialog from './CreateItemDialog.vue'
+
 export default {
   name: 'CreatePanel',
+  components: {
+    CreateItemDialog
+  },
   emits: ['createMap', 'createFolder', 'close'],
   data() {
     return {
-      newName: ''
+      showItemDialog: false,
+      selectedItemType: null
     }
   },
   methods: {
-    createMap(type) {
-      if (!this.newName.trim()) {
-        alert('Введите название карты!')
-        return
-      }
-      this.$emit('createMap', {
-        mapType: type,
-        mapName: this.newName
-      })
-      this.newName = ''
+    showDialog(itemType) {
+      this.selectedItemType = itemType
+      this.showItemDialog = true
     },
-    createFolder() {
-      if (!this.newName.trim()) {
-        alert('Введите название папки!')
-        return
+    cancelDialog() {
+      this.showItemDialog = false
+    },
+    handleCreateItem(item) {
+      if (item.type === 'map') {
+        this.$emit('createMap', {
+          mapType: item.mapType,
+          mapName: item.name
+        })
+      } else if (item.type === 'folder') {
+        this.$emit('createFolder', item.name)
       }
-      this.$emit('createFolder', this.newName)
-      this.newName = ''
+      this.showItemDialog = false
     }
   }
 }
