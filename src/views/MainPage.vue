@@ -28,16 +28,18 @@
 
           <!-- Если выбрали папку (folder), показываем её содержимое + переключатель вида -->
           <div v-else-if="selectedItem && selectedItem.type === 'folder'">
-            <div class="view-controls">
-              <h2>{{ selectedItem.name }}</h2>
-              <switch-view @switchView="viewMode = $event" />
+            <div class="folder-preview-container">
+              <div class="view-controls">
+                <h2>{{ selectedItem.name }}</h2>
+                <switch-view @switchView="viewMode = $event" />
+              </div>
+              <folder-content-view
+                :items="selectedItem.children"
+                :viewMode="viewMode"
+                @selectItem="handleSelectItem"
+                @moveItem="handleMoveItem"
+              />
             </div>
-            <folder-content-view
-              :items="selectedItem.children"
-              :viewMode="viewMode"
-              @selectItem="handleSelectItem"
-              @moveItem="handleMoveItem"
-            />
           </div>
 
           <!-- Если выбрали карту -->

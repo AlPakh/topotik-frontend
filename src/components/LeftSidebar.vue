@@ -109,20 +109,3 @@ export default {
 </script>
 
 <style scoped src="@/assets/css/components/LeftSidebar.css"></style>
-
-<style scoped>
-.sidebar-header {
-  cursor: pointer;
-  user-select: none;
-}
-
-.sidebar-header:hover h3 {
-  color: #007bff;
-}
-
-.folder-tree.drag-over {
-  background-color: rgba(0, 123, 255, 0.1);
-  border: 2px dashed #007bff;
-  border-radius: 4px;
-}
-</style>

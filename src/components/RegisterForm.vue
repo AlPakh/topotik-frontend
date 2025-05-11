@@ -131,17 +131,4 @@ export default {
 };
 </script>
 
-<style scoped src="@/assets/css/components/LoginPage.css"></style> 
-
-<style scoped>
-/* Улучшенные стили для контейнера логотипа */
-.logo-container {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  margin: 0 auto 30px;
-  width: 240px;
-  height: 70px;
-  overflow: visible;
-}
-</style> 
+<style scoped src="@/assets/css/components/LoginPage.css"></style>

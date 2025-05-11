@@ -8,6 +8,8 @@
 }
 
 .sidebar-header {
+    cursor: pointer;
+    user-select: none;
     padding: 15px;
     border-bottom: 1px solid #ddd;
 }
@@ -74,4 +76,14 @@
         border-right: none;
         border-bottom: 1px solid #ccc;
     }
+}
+
+.sidebar-header:hover h3 {
+    color: #007bff;
+}
+
+.folder-tree.drag-over {
+    background-color: rgba(0, 123, 255, 0.1);
+    border: 2px dashed #007bff;
+    border-radius: 4px;
 }
