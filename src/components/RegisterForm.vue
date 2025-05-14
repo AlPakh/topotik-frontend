@@ -103,15 +103,38 @@ export default {
       error.value = '';
       
       try {
-        await register({
+        console.log('Начинаем процесс регистрации с данными:', {
+          username: username.value,
+          email: email.value,
+          password: password.value ? '********' : null
+        });
+        
+        const registerData = await register({
           username: username.value,
           email: email.value,
           password: password.value
         });
         
-        // После успешной регистрации перенаправляем на страницу логина
-        router.push('/login');
+        console.log('Регистрация успешна, полученные данные:', {
+          username: registerData.username,
+          token: registerData.access_token ? `${registerData.access_token.substring(0, 10)}...` : 'отсутствует',
+          token_type: registerData.token_type
+        });
+        
+        // Небольшая задержка перед перенаправлением, чтобы токен успел применится
+        console.log('Делаем задержку перед перенаправлением...');
+        await new Promise(resolve => setTimeout(resolve, 300));
+        
+        // После успешной регистрации перенаправляем на страницу подтверждения местоположения
+        console.log('Перенаправляем на страницу выбора местоположения...');
+        router.push('/location');
       } catch (err) {
+        console.error('Ошибка при регистрации:', err);
+        console.log('Детали ошибки:', {
+          status: err.response?.status,
+          data: err.response?.data,
+          message: err.message
+        });
         error.value = err.response?.data?.detail || 'Ошибка регистрации. Пожалуйста, попробуйте позже.';
       } finally {
         loading.value = false;

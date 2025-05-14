@@ -357,6 +357,15 @@ export default {
   mounted() {
     document.addEventListener('click', this.handleOutsideClick)
     
+    // Проверяем, есть ли markdownContent в маркере и конвертируем его в блоки при необходимости
+    if (this.localMarker.markdownContent && (!this.localMarker.blocks || this.localMarker.blocks.length === 0)) {
+      console.log('Преобразуем markdown в блоки при инициализации:', this.localMarker.markdownContent);
+      this.localMarker.blocks = this.markdownToBlocks(this.localMarker.markdownContent);
+    } else if (!this.localMarker.blocks || this.localMarker.blocks.length === 0) {
+      // Если ни markdownContent, ни blocks нет, создаем пустой блок
+      this.localMarker.blocks = [{ type: 'text', content: '' }];
+    }
+    
     // Конвертируем имеющиеся блоки в markdown при монтировании
     this.updateMarkdownContent()
     
@@ -374,6 +383,30 @@ export default {
     
     // Добавляем обработчик изменения размера окна
     window.addEventListener('resize', this.calculateMaxWidth)
+  },
+  watch: {
+    marker: {
+      handler(newMarker) {
+        console.log('Маркер обновлен:', newMarker);
+        // Создаем глубокую копию маркера
+        this.localMarker = JSON.parse(JSON.stringify(newMarker));
+        
+        // Проверяем, есть ли markdownContent в маркере и конвертируем его в блоки
+        if (this.localMarker.markdownContent && (!this.localMarker.blocks || this.localMarker.blocks.length === 0)) {
+          console.log('Преобразуем markdown в блоки при обновлении:', this.localMarker.markdownContent);
+          this.localMarker.blocks = this.markdownToBlocks(this.localMarker.markdownContent);
+        } else if (!this.localMarker.blocks || this.localMarker.blocks.length === 0) {
+          // Если ни markdownContent, ни blocks нет, создаем пустой блок
+          this.localMarker.blocks = [{ type: 'text', content: '' }];
+        }
+        
+        // Обновляем все textarea после обновления данных
+        this.$nextTick(() => {
+          this.resizeAllTextareas();
+        });
+      },
+      deep: true
+    }
   },
   updated() {
     // Вызываем resize при обновлении компонента
@@ -829,7 +862,19 @@ export default {
     save() {
       // Обновляем markdown-контент перед сохранением
       this.updateMarkdownContent()
-      this.$emit('save', this.localMarker)
+      
+      // Создаем копию локального маркера для сохранения
+      const markerToSave = {
+        ...this.localMarker,
+        name: this.localMarker.name || 'Метка без названия', // Обеспечиваем наличие имени
+        markdownContent: this.localMarker.markdownContent,
+        blocks: this.localMarker.blocks
+      };
+      
+      console.log('Сохраняем маркер:', markerToSave);
+      
+      // Передаем данные родительскому компоненту
+      this.$emit('save', markerToSave);
     },
     ensureEmptyBlockAtEnd() {
       const lastBlockIndex = this.localMarker.blocks.length - 1
@@ -944,9 +989,20 @@ export default {
     },
     // Преобразование блоков в Markdown
     updateMarkdownContent() {
-      this.markdownContent = this.blocksToMarkdown(this.localMarker.blocks)
-      // Сохраняем markdown в маркере
-      this.localMarker.markdownContent = this.markdownContent
+      if (!this.localMarker.blocks || !this.localMarker.blocks.length) {
+        this.markdownContent = '';
+        this.localMarker.markdownContent = '';
+        return;
+      }
+      
+      // Преобразуем блоки в markdown
+      const markdown = this.blocksToMarkdown(this.localMarker.blocks);
+      
+      // Сохраняем markdown в свойствах
+      this.markdownContent = markdown;
+      this.localMarker.markdownContent = markdown;
+      
+      console.log('Markdown обновлен:', markdown);
     },
     
     // Преобразование блоков в Markdown
@@ -1039,89 +1095,151 @@ export default {
     
     // Преобразование Markdown в блоки
     markdownToBlocks(markdown) {
-      if (!markdown) return [{ type: 'text', content: '' }]
+      if (!markdown) return [{ type: 'text', content: '' }];
       
-      const lines = markdown.split('\n')
-      const blocks = []
-      let currentBlock = null
+      const lines = markdown.split('\n');
+      const blocks = [];
       
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i]
+      let i = 0;
+      while (i < lines.length) {
+        const line = lines[i].trim();
         
-        // Пропускаем пустые строки между блоками
-        if (line.trim() === '' && currentBlock) {
-          currentBlock = null
-          continue
+        // Пропускаем пустые строки
+        if (line === '') {
+          i++;
+          continue;
         }
         
-        // Заголовок 1
+        // Заголовок 1 уровня
         if (line.startsWith('# ')) {
           blocks.push({
             type: 'heading1',
             content: line.substring(2).trim()
-          })
-          currentBlock = null
-        } 
-        // Заголовок 2
-        else if (line.startsWith('## ')) {
+          });
+          i++;
+          continue;
+        }
+        
+        // Заголовок 2 уровня
+        if (line.startsWith('## ')) {
           blocks.push({
             type: 'heading2',
             content: line.substring(3).trim()
-          })
-          currentBlock = null
+          });
+          i++;
+          continue;
         }
-        // Заголовок 3
-        else if (line.startsWith('### ')) {
+        
+        // Заголовок 3 уровня
+        if (line.startsWith('### ')) {
           blocks.push({
             type: 'heading3',
             content: line.substring(4).trim()
-          })
-          currentBlock = null
+          });
+          i++;
+          continue;
         }
-        // Цитата
-        else if (line.startsWith('> ')) {
+        
+        // Задача с чекбоксом
+        const taskMatch = line.match(/^-\s*\[([ xX])\]\s*(.+)$/);
+        if (taskMatch) {
           blocks.push({
-            type: 'quote',
-            content: line.substring(2).trim()
-          })
-          currentBlock = null
+            type: 'task-item',
+            content: taskMatch[2].trim(),
+            completed: taskMatch[1].toLowerCase() === 'x'
+          });
+          i++;
+          continue;
         }
-        // Разделитель
-        else if (line.trim() === '---') {
-          blocks.push({ type: 'divider' })
-          currentBlock = null
-        }
-        // Элемент списка
-        else if (line.startsWith('* ') || line.startsWith('- ')) {
+        
+        // Элемент маркированного списка (с дефисом)
+        if (line.startsWith('- ')) {
           blocks.push({
             type: 'list-item',
             content: line.substring(2).trim()
-          })
-          currentBlock = null
+          });
+          i++;
+          continue;
         }
+        
+        // Элемент маркированного списка (со звездочкой)
+        if (line.startsWith('* ')) {
+          blocks.push({
+            type: 'list-item',
+            content: line.substring(2).trim()
+          });
+          i++;
+          continue;
+        }
+        
+        // Элемент нумерованного списка
+        const orderedListMatch = line.match(/^(\d+)\.\s+(.+)$/);
+        if (orderedListMatch) {
+          blocks.push({
+            type: 'ordered-list-item',
+            content: orderedListMatch[2].trim(),
+            order: parseInt(orderedListMatch[1])
+          });
+          i++;
+          continue;
+        }
+        
+        // Горизонтальная линия
+        if (line === '---') {
+          blocks.push({ type: 'divider' });
+          i++;
+          continue;
+        }
+        
+        // Цитата
+        if (line.startsWith('> ')) {
+          blocks.push({
+            type: 'quote',
+            content: line.substring(2).trim()
+          });
+          i++;
+          continue;
+        }
+        
         // Обычный текст
-        else {
-          // Если предыдущий блок был текстом, добавляем строку к нему
-          if (currentBlock && currentBlock.type === 'text') {
-            currentBlock.content += '\n' + line
-          } else {
-            currentBlock = {
-              type: 'text',
-              content: line
-            }
-            blocks.push(currentBlock)
+        // Собираем многострочный текст до следующего блока
+        let textContent = line;
+        let j = i + 1;
+        while (j < lines.length) {
+          const nextLine = lines[j].trim();
+          
+          // Если следующая строка - начало нового блока, прерываем сбор текста
+          if (nextLine === '' || 
+              nextLine.startsWith('# ') || 
+              nextLine.startsWith('## ') || 
+              nextLine.startsWith('### ') || 
+              nextLine.startsWith('- ') || 
+              nextLine.startsWith('* ') || 
+              nextLine.match(/^\d+\.\s+/) || 
+              nextLine === '---' || 
+              nextLine.startsWith('> ') ||
+              nextLine.match(/^-\s*\[([ xX])\]\s*(.+)$/)) {
+            break;
           }
+          
+          textContent += '\n' + lines[j];
+          j++;
         }
+        
+        blocks.push({
+          type: 'text',
+          content: textContent
+        });
+        
+        i = j;
       }
       
-      // Добавляем пустой текстовый блок в конце, если его нет
-      if (blocks.length === 0 || 
-          !((blocks[blocks.length - 1].type === 'text') && 
-           (blocks[blocks.length - 1].content.trim() === ''))) {
-        blocks.push({ type: 'text', content: '' })
+      // Добавляем пустой блок в конце, если нужно
+      if (blocks.length === 0 || blocks[blocks.length - 1].type !== 'text' || blocks[blocks.length - 1].content.trim() !== '') {
+        blocks.push({ type: 'text', content: '' });
       }
       
-      return blocks
+      return blocks;
     },
     
     // Экспорт содержимого в markdown файл

@@ -116,11 +116,11 @@
     border-radius: 4px;
 }
 
-.confirmation-buttons {
+/* .confirmation-buttons {
     display: flex;
     justify-content: flex-end;
     gap: 10px;
-}
+} */
 
 .delete-button {
     background-color: #e53935;
@@ -136,12 +136,84 @@
     cursor: not-allowed;
 }
 
-.cancel-button {
+/* .cancel-button {
     background-color: #f5f5f5;
     border: 1px solid #ddd;
     padding: 8px 16px;
     border-radius: 4px;
     cursor: pointer;
+} */
+
+/* Стили для дополнительного диалогового окна каскадного удаления */
+.cascade-confirmation-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.7);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1100;
+    /* Выше чем обычное подтверждение */
+}
+
+.cascade-confirmation-dialog {
+    background-color: #fff;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+    padding: 24px;
+    width: 90%;
+    max-width: 500px;
+    text-align: center;
+}
+
+.danger-text {
+    color: #ff0000;
+    font-weight: bold;
+    font-size: 18px;
+    margin: 16px 0;
+}
+
+.confirmation-buttons {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    margin-top: 24px;
+}
+
+.danger-button {
+    background-color: #ff3b30;
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.danger-button:hover:not(:disabled) {
+    background-color: #ff5e54;
+}
+
+.danger-button:disabled {
+    background-color: #ffccc9;
+    cursor: not-allowed;
+}
+
+.cancel-button {
+    background-color: #f1f1f1;
+    color: #333;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.3s;
+}
+
+.cancel-button:hover {
+    background-color: #ddd;
 }
 
 /* Адаптивность */
