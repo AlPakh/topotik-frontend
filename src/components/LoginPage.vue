@@ -4,35 +4,31 @@
       <div class="logo-container">
         <svg-logo width="240px" height="70px" />
       </div>
-      
+
       <div v-if="error" class="error-message">
         {{ error }}
       </div>
-      
-      <input 
-        v-model="email" 
-        placeholder="Логин" 
+
+      <input
+        v-model="email"
+        placeholder="Логин или Email"
         class="login-input username"
-        type="login"
+        type="text"
         required
       />
-      
-      <input 
-        type="password" 
-        v-model="password" 
-        placeholder="Пароль" 
+
+      <input
+        type="password"
+        v-model="password"
+        placeholder="Пароль"
         class="login-input password"
         required
       />
-      
-      <button 
-        @click="handleLogin" 
-        :disabled="loading"
-        class="login-button"
-      >
-        {{ loading ? 'Выполняется вход...' : 'Войти' }}
+
+      <button @click="handleLogin" :disabled="loading" class="login-button">
+        {{ loading ? "Выполняется вход..." : "Войти" }}
       </button>
-      
+
       <div class="register-link">
         <router-link to="/register">Зарегистрироваться</router-link>
       </div>
@@ -41,53 +37,55 @@
 </template>
 
 <script>
-import { ref } from 'vue';
-import { useRouter } from 'vue-router';
-import { login } from '@/services/auth';
+import { ref } from "vue";
+import { useRouter } from "vue-router";
+import { login } from "@/services/auth";
 // Импортируем компонент логотипа
-import SvgLogo from '@/components/SvgLogo.vue';
+import SvgLogo from "@/components/SvgLogo.vue";
 
 export default {
-  name: 'LoginPage',
+  name: "LoginPage",
   components: {
-    SvgLogo
+    SvgLogo,
   },
-  
+
   setup() {
     const router = useRouter();
-    const email = ref('');
-    const password = ref('');
-    const error = ref('');
+    const email = ref("");
+    const password = ref("");
+    const error = ref("");
     const loading = ref(false);
-    
+
     const handleLogin = async () => {
       if (!email.value || !password.value) {
-        error.value = 'Пожалуйста, введите email и пароль';
+        error.value = "Пожалуйста, введите email и пароль";
         return;
       }
-      
+
       loading.value = true;
-      error.value = '';
-      
+      error.value = "";
+
       try {
         await login(email.value, password.value);
-        router.push('/main');
+        router.push("/main");
       } catch (err) {
-        error.value = err.response?.data?.detail || 'Ошибка входа. Проверьте учетные данные.';
-        console.error('Ошибка входа:', err);
+        error.value =
+          err.response?.data?.detail ||
+          "Ошибка входа. Проверьте учетные данные.";
+        console.error("Ошибка входа:", err);
       } finally {
         loading.value = false;
       }
     };
-    
+
     return {
       email,
       password,
       error,
       loading,
-      handleLogin
+      handleLogin,
     };
-  }
+  },
 };
 </script>
 

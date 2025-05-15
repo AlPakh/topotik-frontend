@@ -445,3 +445,54 @@
         max-height: 200px;
     }
 }
+
+/* Новые стили для диалога выбора категории */
+.select-category-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 1000;
+}
+
+/* Стили для диалога выбора категории */
+.select-category-dialog {
+    background-color: #fff;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 9999;
+    min-width: 300px;
+    max-width: 450px;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+/* Стили для заголовка диалога */
+.select-dialog-header {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 10px;
+    color: #333;
+}
+
+/* Стили для выпадающего списка категорий */
+.category-select {
+    padding: 10px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 16px;
+    width: 100%;
+    cursor: pointer;
+}
+
+/* Стиль для режима добавления метки (курсор крестик) */
+.adding-marker-mode {
+    cursor: crosshair !important;
+}

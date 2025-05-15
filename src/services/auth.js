@@ -89,18 +89,20 @@ export const autoLoginAfterRegister = async () => {
 
 /**
  * Вход пользователя в систему
- * @param {string} email - email пользователя
+ * @param {string} usernameOrEmail - имя пользователя или email
  * @param {string} password - пароль пользователя
  * @returns {Promise} результат запроса с токеном
  */
-export const login = async (email, password) => {
+export const login = async (usernameOrEmail, password) => {
     try {
+        console.log(`Попытка входа с идентификатором: ${usernameOrEmail}`);
         const response = await api.post('/auth/login', {
-            username: email,
+            username: usernameOrEmail,
             password: password
         });
 
         const { access_token, token_type, username, email: userEmail } = response.data;
+        console.log(`Успешный вход пользователя: ${username}`);
 
         // Сохраняем данные в cookies
         Cookies.set('access_token', access_token, { expires: 15 }); // 15 дней
@@ -118,7 +120,9 @@ export const login = async (email, password) => {
 
         if (error.response) {
             if (error.response.status === 401) {
-                throw new Error('Неверный email или пароль');
+                throw new Error('Неверный логин или пароль');
+            } else if (error.response.status === 422) {
+                throw new Error('Ошибка формата данных. Пожалуйста, проверьте логин и пароль.');
             } else if (error.response.status === 500) {
                 throw new Error('Ошибка сервера. Пожалуйста, попробуйте позже.');
             } else {

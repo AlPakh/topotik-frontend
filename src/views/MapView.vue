@@ -123,6 +123,33 @@
           </div>
         </div>
 
+        <!-- Диалог выбора категории для метки -->
+        <div
+          v-if="showCategoryDialog"
+          class="select-category-overlay"
+          @click.self="closeCategoryDialog"
+        >
+          <div class="select-category-dialog">
+            <div class="select-dialog-header">
+              Выберите категорию для новой метки
+            </div>
+            <select
+              class="category-select"
+              v-model="selectedCategoryId"
+              @change="onCategorySelected"
+            >
+              <option
+                v-for="category in categories"
+                :key="category.id"
+                :value="category.id"
+                :style="{ color: category.color }"
+              >
+                {{ category.name }}
+              </option>
+            </select>
+          </div>
+        </div>
+
         <!-- Редактор метки -->
         <marker-editor
           v-if="showMarkerEditor"
@@ -238,6 +265,8 @@ export default {
       dragEnterMarker: null,
       showColorEditor: false,
       selectedContextType: null,
+      showCategoryDialog: false,
+      selectedCategoryId: null,
     };
   },
   created() {
@@ -1228,105 +1257,49 @@ export default {
 
       console.log("Доступно несколько категорий, показываем диалог выбора");
 
-      // Закрываем все предыдущие диалоги (если они остались)
-      const existingDialogs = document.querySelectorAll(
-        ".select-category-dialog"
+      // Показываем диалог выбора категории
+      this.selectedCategoryId = this.categories[0].id; // По умолчанию выбираем первую категорию
+      this.showCategoryDialog = true;
+    },
+
+    onCategorySelected() {
+      if (!this.selectedCategoryId) return;
+
+      const selectedCategory = this.categories.find(
+        (c) => c.id === this.selectedCategoryId
       );
-      existingDialogs.forEach((dialog) => {
-        document.body.removeChild(dialog);
-      });
 
-      // Если есть несколько категорий, просим пользователя выбрать
-      const categoryOptions = this.categories
-        .map((c) => {
-          return `<option value="${c.id}" style="color: ${c.color}">${c.name}</option>`;
-        })
-        .join("");
+      console.log(
+        "Пользователь выбрал категорию:",
+        selectedCategory ? selectedCategory.name : "неизвестная",
+        "(ID:",
+        this.selectedCategoryId,
+        ")"
+      );
 
-      const categorySelect = document.createElement("select");
-      categorySelect.innerHTML = categoryOptions;
-      categorySelect.className = "category-select";
+      this.pendingMarkerCategory = this.selectedCategoryId;
+      this.showCategoryDialog = false;
 
-      const container = document.createElement("div");
-      container.innerHTML = "<p>Выберите категорию для новой метки:</p>";
-      container.appendChild(categorySelect);
+      alert("Кликните на карту, чтобы разместить метку");
 
-      // Показываем диалоговое окно с выбором категории
-      const selectDialog = document.createElement("div");
-      selectDialog.className = "select-category-dialog confirmation-dialog";
-      selectDialog.appendChild(container);
+      // Изменяем курсор для режима добавления метки
+      document.getElementById("map").classList.add("adding-marker-mode");
+      console.log(
+        "Режим создания метки активирован (курсор изменен на крестик)"
+      );
 
-      // Добавляем кнопки подтверждения и отмены
-      const buttonsContainer = document.createElement("div");
-      buttonsContainer.className = "dialog-buttons";
+      // Добавляем обработчик правой кнопки мыши для отмены
+      document
+        .getElementById("map")
+        .addEventListener("contextmenu", this.cancelMarkerCreation);
+      console.log(
+        "Добавлен обработчик правой кнопки мыши для отмены создания метки"
+      );
+    },
 
-      const okButton = document.createElement("button");
-      okButton.innerText = "ОК";
-      okButton.className = "confirm-button";
-
-      const self = this; // Сохраняем контекст для использования в обработчике
-
-      okButton.onclick = function () {
-        const selectedCategoryId = categorySelect.value;
-        const selectedCategory = self.categories.find(
-          (c) => c.id === selectedCategoryId
-        );
-        console.log(
-          "Пользователь выбрал категорию:",
-          selectedCategory ? selectedCategory.name : "неизвестная",
-          "(ID:",
-          selectedCategoryId,
-          ")"
-        );
-
-        self.pendingMarkerCategory = selectedCategoryId;
-        document.body.removeChild(selectDialog);
-        alert("Кликните на карту, чтобы разместить метку");
-
-        // Изменяем курсор для режима добавления метки
-        document.getElementById("map").classList.add("adding-marker-mode");
-        console.log(
-          "Режим создания метки активирован (курсор изменен на крестик)"
-        );
-
-        // Добавляем обработчик правой кнопки мыши для отмены
-        document
-          .getElementById("map")
-          .addEventListener("contextmenu", self.cancelMarkerCreation);
-        console.log(
-          "Добавлен обработчик правой кнопки мыши для отмены создания метки"
-        );
-      };
-
-      const cancelButton = document.createElement("button");
-      cancelButton.innerText = "Отмена";
-      cancelButton.className = "cancel-button";
-      cancelButton.onclick = () => {
-        console.log("Пользователь отменил выбор категории");
-        document.body.removeChild(selectDialog);
-      };
-
-      buttonsContainer.appendChild(okButton);
-      buttonsContainer.appendChild(cancelButton);
-
-      selectDialog.appendChild(buttonsContainer);
-
-      // Добавляем стили для обеспечения видимости диалога
-      selectDialog.style.position = "fixed";
-      selectDialog.style.top = "50%";
-      selectDialog.style.left = "50%";
-      selectDialog.style.transform = "translate(-50%, -50%)";
-      selectDialog.style.zIndex = "9999"; // Высокий z-index, чтобы быть поверх других элементов
-      selectDialog.style.backgroundColor = "#fff";
-      selectDialog.style.padding = "20px";
-      selectDialog.style.borderRadius = "8px";
-      selectDialog.style.boxShadow = "0 4px 12px rgba(0, 0, 0, 0.15)";
-      selectDialog.style.minWidth = "300px";
-      selectDialog.style.maxWidth = "450px";
-
-      // Применяем стили диалогового окна из общих стилей приложения
-      document.body.appendChild(selectDialog);
-      console.log("Диалоговое окно выбора категории отображено");
+    closeCategoryDialog() {
+      this.showCategoryDialog = false;
+      this.selectedCategoryId = null;
     },
 
     // Отмена создания метки (вызывается при клике правой кнопкой мыши)
