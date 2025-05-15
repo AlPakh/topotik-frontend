@@ -9,21 +9,37 @@
         {{ error }}
       </div>
 
-      <input
-        v-model="email"
-        placeholder="Логин или Email"
-        class="login-input username"
-        type="text"
-        required
-      />
+      <div class="input-wrapper">
+        <input
+          v-model="email"
+          placeholder="Логин или Email"
+          class="login-input username"
+          type="text"
+          required
+          @keyup.enter="handleLogin"
+        />
+      </div>
 
-      <input
-        type="password"
-        v-model="password"
-        placeholder="Пароль"
-        class="login-input password"
-        required
-      />
+      <div class="input-wrapper">
+        <div class="password-input-container">
+          <input
+            :type="showPassword ? 'text' : 'password'"
+            v-model="password"
+            placeholder="Пароль"
+            class="login-input password"
+            required
+            @keyup.enter="handleLogin"
+          />
+          <button
+            type="button"
+            class="password-toggle"
+            @click="togglePasswordVisibility"
+          >
+            <span v-if="showPassword">👁️‍🗨️</span>
+            <span v-else>👁️</span>
+          </button>
+        </div>
+      </div>
 
       <button @click="handleLogin" :disabled="loading" class="login-button">
         {{ loading ? "Выполняется вход..." : "Войти" }}
@@ -55,6 +71,11 @@ export default {
     const password = ref("");
     const error = ref("");
     const loading = ref(false);
+    const showPassword = ref(false);
+
+    const togglePasswordVisibility = () => {
+      showPassword.value = !showPassword.value;
+    };
 
     const handleLogin = async () => {
       if (!email.value || !password.value) {
@@ -69,10 +90,24 @@ export default {
         await login(email.value, password.value);
         router.push("/main");
       } catch (err) {
-        error.value =
-          err.response?.data?.detail ||
-          "Ошибка входа. Проверьте учетные данные.";
         console.error("Ошибка входа:", err);
+
+        // Улучшенная обработка ошибок
+        if (err.response?.data?.detail) {
+          const detail = err.response.data.detail;
+
+          if (typeof detail === "string") {
+            if (detail.includes("Invalid credentials")) {
+              error.value = "Неверный логин или пароль";
+            } else {
+              error.value = detail;
+            }
+          } else {
+            error.value = "Ошибка входа. Проверьте учетные данные.";
+          }
+        } else {
+          error.value = "Ошибка входа. Пожалуйста, попробуйте позже.";
+        }
       } finally {
         loading.value = false;
       }
@@ -83,7 +118,9 @@ export default {
       password,
       error,
       loading,
+      showPassword,
       handleLogin,
+      togglePasswordVisibility,
     };
   },
 };

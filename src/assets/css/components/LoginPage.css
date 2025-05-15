@@ -31,10 +31,11 @@
 .login-input {
     width: 100%;
     padding: 12px;
-    margin-bottom: 15px;
+    margin-bottom: 0;
     border: 1px solid #ccc;
     border-radius: 4px;
     font-size: 16px;
+    box-sizing: border-box;
 }
 
 .username {
@@ -89,6 +90,68 @@
 
 .register-link a:hover {
     text-decoration: underline;
+}
+
+/* Новые стили для улучшенных форм */
+.input-wrapper {
+    margin-bottom: 15px;
+    width: 100%;
+    position: relative;
+}
+
+.password-input-container {
+    position: relative;
+    width: 100%;
+}
+
+.password-toggle {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #666;
+    font-size: 16px;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    margin: 0;
+}
+
+.validation-error {
+    color: #ff4136;
+    font-size: 12px;
+    margin-top: 5px;
+    text-align: left;
+    padding: 0 5px;
+}
+
+/* Стили для индикатора сложности пароля */
+.password-strength {
+    margin-top: 5px;
+    width: 100%;
+}
+
+.strength-bar-container {
+    height: 5px;
+    background-color: #e0e0e0;
+    border-radius: 2px;
+    margin-bottom: 5px;
+    overflow: hidden;
+}
+
+.strength-bar {
+    height: 100%;
+    transition: width 0.3s, background-color 0.3s;
+}
+
+.strength-text {
+    font-size: 12px;
+    text-align: right;
 }
 
 /* Адаптивность */
