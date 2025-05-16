@@ -33,8 +33,9 @@
 import ColorPicker from "@/components/ColorPicker.vue";
 import Cookies from "js-cookie";
 
-// Определение URL API сервера
-const API_URL = "http://localhost:8000";
+// Определение URL API сервера из переменных окружения
+const API_URL = process.env.VUE_APP_API_URL || "http://localhost:8000";
+console.log("EditCollectionColor использует API URL:", API_URL);
 
 export default {
   name: "EditCollectionColor",

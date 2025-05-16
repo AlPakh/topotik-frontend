@@ -224,8 +224,9 @@ import { getCollections } from "@/services/collections";
 import { removeMarkerFromCollection } from "@/services/collections";
 import { api } from "@/api";
 
-// Определение URL API сервера
-const API_URL = "http://localhost:8000";
+// Определение URL API сервера из переменных окружения
+const API_URL = process.env.VUE_APP_API_URL || "http://localhost:8000";
+console.log("MapView использует API URL:", API_URL);
 
 export default {
   name: "MapView",

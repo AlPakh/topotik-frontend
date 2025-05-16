@@ -2,9 +2,13 @@
 import axios from 'axios';
 import Cookies from 'js-cookie';
 
+// Получаем URL API из переменных окружения с фоллбэком на локальный сервер
+const API_URL = process.env.VUE_APP_API_URL || 'http://localhost:8000';
+console.log('Используется API URL:', API_URL);
+
 // Создаём экземпляр axios с базовым URL для API
 const api = axios.create({
-    baseURL: 'http://localhost:8000', // URL бэкенда
+    baseURL: API_URL, // URL бэкенда из переменной окружения
     headers: {
         'Content-Type': 'application/json',
     },
