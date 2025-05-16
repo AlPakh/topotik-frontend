@@ -170,14 +170,14 @@ export const settingsService = {
     getDefaultSettings() {
         return {
             map: {
-                defaultCity: 'Санкт-Петербург, Россия',
-                defaultCoordinates: {
-                    lat: 59.9342,
-                    lng: 30.3351
-                },
+                units: "km",
+                showGrid: false,
+                defaultCity: "Saint Petersburg, Northwestern Federal District, Russia",
                 defaultZoom: 13,
-                units: 'km',
-                showGrid: false
+                defaultCoordinates: {
+                    lat: 59.9606739,
+                    lng: 30.1586551
+                }
             },
             ui: {
                 theme: 'light',

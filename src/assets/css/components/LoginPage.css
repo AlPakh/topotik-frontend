@@ -39,11 +39,11 @@
 }
 
 .username {
-    border-color: #800000;
+    border-color: #434343;
 }
 
 .password {
-    border-color: #ff0000;
+    border-color: #434343;
 }
 
 .login-button {
@@ -72,10 +72,14 @@
     color: #f44336;
     margin-bottom: 15px;
     text-align: center;
-    width: 100%;
+    width: auto;
     padding: 10px;
     background-color: rgba(244, 67, 54, 0.1);
     border-radius: 4px;
+}
+
+.error-message.loc-page {
+    width: auto;
 }
 
 .register-link {

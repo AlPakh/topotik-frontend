@@ -5,61 +5,79 @@
         <svg-logo />
       </div>
       <h2 class="app-title">Местоположение</h2>
-      
+
       <div v-if="loading" class="loading-wrapper">
         <div class="loading-spinner"></div>
         <p>Определяем ваше местоположение...</p>
       </div>
-      
+
       <div v-else>
         <div v-if="!showSearch" class="confirmation-wrapper">
           <p class="city-question">Это ваш город?</p>
           <p class="city-name">{{ cityName }}</p>
-          <p class="city-info">Это местоположение будет использоваться для центрирования карт OSM</p>
-          
+          <p class="city-info">
+            Это местоположение будет использоваться для центрирования карт OSM
+          </p>
+
           <div class="button-group">
-            <button class="login-button" @click="confirmCity">Да, это мой город</button>
-            <button class="login-button secondary" @click="showSearch = true">Нет, выбрать другой</button>
+            <button class="login-button" @click="confirmCity">
+              Да, это мой город
+            </button>
+            <button class="login-button secondary" @click="showSearch = true">
+              Нет, выбрать другой
+            </button>
           </div>
         </div>
-        
+
         <div v-else class="search-wrapper">
           <p class="search-title">Введите название вашего города</p>
-          
+
           <div class="search-input-wrapper">
-            <input 
-              type="text" 
-              class="login-input" 
-              v-model="searchQuery" 
-              placeholder="Введите название города" 
+            <input
+              type="text"
+              class="login-input"
+              v-model="searchQuery"
+              placeholder="Введите название города"
               @input="handleSearchInput"
             />
-            <button class="search-button" @click="searchCity" :disabled="searchQuery.length < 2">
+            <button
+              class="search-button"
+              @click="searchCity"
+              :disabled="searchQuery.length < 2"
+            >
               Поиск
             </button>
           </div>
-          
+
           <div v-if="searchResults.length > 0" class="search-results">
-            <div 
-              v-for="(result, index) in searchResults" 
-              :key="index" 
+            <div
+              v-for="(result, index) in searchResults"
+              :key="index"
               class="search-result-item"
               @click="selectCity(result)"
             >
               {{ result.display_name }}
             </div>
           </div>
-          
+
           <div v-if="searchError" class="error-message">
             {{ searchError }}
           </div>
-          
+
           <div class="button-group">
-            <button class="login-button" @click="searchCity" :disabled="searchQuery.length < 2">Найти город</button>
-            <button class="login-button secondary" @click="showSearch = false">Вернуться</button>
+            <button
+              class="login-button"
+              @click="searchCity"
+              :disabled="searchQuery.length < 2"
+            >
+              Найти город
+            </button>
+            <button class="login-button secondary" @click="showSearch = false">
+              Вернуться
+            </button>
           </div>
         </div>
-        
+
         <div v-if="error" class="error-message">
           {{ error }}
         </div>
@@ -69,51 +87,51 @@
 </template>
 
 <script>
-import SvgLogo from './SvgLogo.vue';
-import { settingsService } from '@/services/settings';
-import { autoLoginAfterRegister } from '@/services/auth';
-import { setAuthToken } from '@/api';
-import Cookies from 'js-cookie';
-import { api } from '@/api';
+import SvgLogo from "./SvgLogo.vue";
+import { settingsService } from "@/services/settings";
+import { autoLoginAfterRegister } from "@/services/auth";
+import { setAuthToken } from "@/api";
+import Cookies from "js-cookie";
+import { api } from "@/api";
 
 export default {
-  name: 'LocationConfirmation',
+  name: "LocationConfirmation",
   components: {
-    SvgLogo
+    SvgLogo,
   },
   data() {
     return {
       loading: true,
       error: null,
-      cityName: '',
+      cityName: "",
       cityCoordinates: null,
       showSearch: false,
-      searchQuery: '',
+      searchQuery: "",
       searchResults: [],
       searchError: null,
       searchTimeout: null,
       selectedCity: null,
-      tokenResetAttempted: false
+      tokenResetAttempted: false,
     };
   },
   async created() {
     // Выполняем автовход после регистрации
     try {
       await autoLoginAfterRegister();
-      
+
       // Проверяем, есть ли токен в cookie
-      const token = Cookies.get('access_token');
+      const token = Cookies.get("access_token");
       if (!token) {
-        console.warn('Токен не найден в cookie');
+        console.warn("Токен не найден в cookie");
       } else {
-        console.log('Токен успешно установлен');
+        console.log("Токен успешно установлен");
         // Ждем 300мс, чтобы все процессы авторизации завершились
-        await new Promise(resolve => setTimeout(resolve, 300));
+        await new Promise((resolve) => setTimeout(resolve, 300));
       }
     } catch (error) {
-      console.error('Ошибка автовхода:', error);
+      console.error("Ошибка автовхода:", error);
     }
-    
+
     // Пытаемся определить местоположение по IP
     this.detectLocationByIp();
   },
@@ -121,15 +139,15 @@ export default {
     // Сброс токена авторизации
     resetToken() {
       if (this.tokenResetAttempted) return;
-      
+
       this.tokenResetAttempted = true;
-      const token = Cookies.get('access_token');
+      const token = Cookies.get("access_token");
       if (token) {
-        console.log('Переприменяем токен авторизации');
+        console.log("Переприменяем токен авторизации");
         setAuthToken(token);
       }
     },
-    
+
     // Самореализованная функция debounce
     debounce(fn, delay) {
       return (...args) => {
@@ -141,49 +159,95 @@ export default {
         }, delay);
       };
     },
-    
+
     async detectLocationByIp() {
       this.loading = true;
       this.error = null;
-      
+
       try {
-        // Используем HTTPS вместо HTTP для IP API
-        const response = await fetch('https://ipapi.co/json/');
-        const data = await response.json();
-        
+        console.log("Запрос местоположения через прокси-сервер бэкенда...");
+
+        // Используем наш прокси-сервер вместо прямого запроса к ipapi.co
+        const response = await api.get("/location/geoip");
+        const data = response.data;
+
+        console.log("Получены данные о местоположении:", data);
+
         if (!data.error) {
-          this.cityName = `${data.city || 'Неизвестный город'}, ${data.country_name || data.country || ''}`.trim();
+          this.cityName = `${data.city || "Неизвестный город"}, ${
+            data.country_name || data.country || ""
+          }`.trim();
           this.cityCoordinates = {
             lat: parseFloat(data.latitude),
-            lng: parseFloat(data.longitude)
+            lng: parseFloat(data.longitude),
           };
-          
-          // Если не удалось определить город, устанавливаем Санкт-Петербург
+
+          console.log("Определено местоположение:", {
+            город: this.cityName,
+            координаты: this.cityCoordinates,
+          });
+
+          // Если не удалось определить город, устанавливаем город по умолчанию
           if (!data.city) {
-            this.cityName = 'Санкт-Петербург, Россия';
-            this.cityCoordinates = {
-              lat: 59.9342,
-              lng: 30.3351
+            console.log("Город не определен, использую настройки по умолчанию");
+            // Используем расширенные настройки по умолчанию
+            const defaultMapSettings = {
+              units: "km",
+              showGrid: false,
+              defaultCity:
+                "Saint Petersburg, Northwestern Federal District, Russia",
+              defaultZoom: 13,
+              defaultCoordinates: {
+                lat: 59.9606739,
+                lng: 30.1586551,
+              },
             };
+
+            this.cityName = defaultMapSettings.defaultCity;
+            this.cityCoordinates = defaultMapSettings.defaultCoordinates;
           }
         } else {
-          throw new Error(data.reason || 'Не удалось определить местоположение');
+          throw new Error(
+            data.reason || "Не удалось определить местоположение"
+          );
         }
       } catch (err) {
-        console.error('Ошибка определения местоположения:', err);
-        this.error = 'Не удалось определить ваше местоположение. Используем город по умолчанию.';
-        
+        console.error("Ошибка определения местоположения:", err);
+
+        // Более детальное логирование при ошибке
+        if (err.response) {
+          console.error("Статус ответа:", err.response.status);
+          console.error("Данные ответа:", err.response.data);
+        }
+
+        this.error =
+          "Не удалось определить ваше местоположение. Используем город по умолчанию.";
+
         // Устанавливаем город по умолчанию
-        this.cityName = 'Санкт-Петербург, Россия';
-        this.cityCoordinates = {
-          lat: 59.9342,
-          lng: 30.3351
+        const defaultMapSettings = {
+          units: "km",
+          showGrid: false,
+          defaultCity:
+            "Saint Petersburg, Northwestern Federal District, Russia",
+          defaultZoom: 13,
+          defaultCoordinates: {
+            lat: 59.9606739,
+            lng: 30.1586551,
+          },
         };
+
+        console.log(
+          "Использую настройки по умолчанию из-за ошибки:",
+          defaultMapSettings
+        );
+
+        this.cityName = defaultMapSettings.defaultCity;
+        this.cityCoordinates = defaultMapSettings.defaultCoordinates;
       } finally {
         this.loading = false;
       }
     },
-    
+
     handleSearchInput() {
       if (this.searchQuery.length >= 2) {
         this.debounce(this.fetchCitySuggestions, 500)();
@@ -191,110 +255,114 @@ export default {
         this.searchResults = [];
       }
     },
-    
+
     async fetchCitySuggestions() {
       if (this.searchQuery.length < 2) return;
-      
+
       this.searchError = null;
-      
+
       try {
-        const url = new URL('https://nominatim.openstreetmap.org/search');
-        url.searchParams.set('format', 'jsonv2');
-        url.searchParams.set('q', this.searchQuery);
-        url.searchParams.set('addressdetails', '1');
-        url.searchParams.set('limit', '5');
-        url.searchParams.set('accept-language', 'en');
-        
+        const url = new URL("https://nominatim.openstreetmap.org/search");
+        url.searchParams.set("format", "jsonv2");
+        url.searchParams.set("q", this.searchQuery);
+        url.searchParams.set("addressdetails", "1");
+        url.searchParams.set("limit", "5");
+        url.searchParams.set("accept-language", "en");
+
         const response = await fetch(url, {
           headers: {
-            'Accept-Language': 'en',
-            'User-Agent': 'Topotik/1.0'
-          }
+            "Accept-Language": "en",
+            "User-Agent": "Topotik/1.0",
+          },
         });
-        
+
         if (!response.ok) {
           throw new Error(`HTTP error ${response.status}`);
         }
-        
+
         const results = await response.json();
-        this.searchResults = results.filter(item => 
-          item.type === 'city' || 
-          item.type === 'administrative' || 
-          item.class === 'place'
+        this.searchResults = results.filter(
+          (item) =>
+            item.type === "city" ||
+            item.type === "administrative" ||
+            item.class === "place"
         );
-        
+
         if (this.searchResults.length === 0) {
-          this.searchError = 'Города не найдены. Попробуйте другой запрос.';
+          this.searchError = "Города не найдены. Попробуйте другой запрос.";
         }
       } catch (err) {
-        console.error('Ошибка поиска городов:', err);
-        this.searchError = 'Произошла ошибка при поиске городов. Пожалуйста, попробуйте позже.';
+        console.error("Ошибка поиска городов:", err);
+        this.searchError =
+          "Произошла ошибка при поиске городов. Пожалуйста, попробуйте позже.";
       }
     },
-    
+
     async searchCity() {
       if (this.searchQuery.length < 2) return;
-      
+
       this.searchError = null;
       this.searchResults = [];
-      
+
       try {
-        const url = new URL('https://nominatim.openstreetmap.org/search');
-        url.searchParams.set('format', 'jsonv2');
-        url.searchParams.set('q', this.searchQuery);
-        url.searchParams.set('addressdetails', '1');
-        url.searchParams.set('limit', '5');
-        url.searchParams.set('accept-language', 'en');
-        
+        const url = new URL("https://nominatim.openstreetmap.org/search");
+        url.searchParams.set("format", "jsonv2");
+        url.searchParams.set("q", this.searchQuery);
+        url.searchParams.set("addressdetails", "1");
+        url.searchParams.set("limit", "5");
+        url.searchParams.set("accept-language", "en");
+
         const response = await fetch(url, {
           headers: {
-            'Accept-Language': 'en',
-            'User-Agent': 'Topotik/1.0'
-          }
+            "Accept-Language": "en",
+            "User-Agent": "Topotik/1.0",
+          },
         });
-        
+
         if (!response.ok) {
           throw new Error(`HTTP error ${response.status}`);
         }
-        
+
         const results = await response.json();
-        this.searchResults = results.filter(item => 
-          item.type === 'city' || 
-          item.type === 'administrative' || 
-          item.class === 'place'
+        this.searchResults = results.filter(
+          (item) =>
+            item.type === "city" ||
+            item.type === "administrative" ||
+            item.class === "place"
         );
-        
+
         if (this.searchResults.length === 0) {
-          this.searchError = 'Города не найдены. Попробуйте другой запрос.';
+          this.searchError = "Города не найдены. Попробуйте другой запрос.";
         }
       } catch (err) {
-        console.error('Ошибка поиска городов:', err);
-        this.searchError = 'Произошла ошибка при поиске городов. Пожалуйста, попробуйте позже.';
+        console.error("Ошибка поиска городов:", err);
+        this.searchError =
+          "Произошла ошибка при поиске городов. Пожалуйста, попробуйте позже.";
       }
     },
-    
+
     selectCity(city) {
       this.selectedCity = city;
       this.cityName = city.display_name;
       this.cityCoordinates = {
         lat: parseFloat(city.lat),
-        lng: parseFloat(city.lon)
+        lng: parseFloat(city.lon),
       };
       this.showSearch = false;
     },
-    
+
     async confirmCity() {
       try {
-        // Пробуем сначала сбросить/переприменить токен 
+        // Пробуем сначала сбросить/переприменить токен
         this.resetToken();
-        
+
         // Ждем 100мс, чтобы токен применился
-        await new Promise(resolve => setTimeout(resolve, 100));
-        
-        // Получаем настройки по умолчанию 
+        await new Promise((resolve) => setTimeout(resolve, 100));
+
+        // Получаем настройки по умолчанию
         const defaultSettings = settingsService.getDefaultSettings();
-        console.log('Настройки по умолчанию:', defaultSettings);
-        
+        console.log("Настройки по умолчанию:", defaultSettings);
+
         // Обновляем настройки карты с выбранным городом
         const settings = {
           ...defaultSettings,
@@ -303,70 +371,80 @@ export default {
             defaultCity: this.cityName,
             defaultCoordinates: {
               lat: this.cityCoordinates.lat,
-              lng: this.cityCoordinates.lng
-            }
-          }
+              lng: this.cityCoordinates.lng,
+            },
+          },
         };
-        console.log('Подготовленные настройки для сохранения:', settings);
-        
+        console.log("Подготовленные настройки для сохранения:", settings);
+
         // Всегда сохраняем настройки локально, на случай сбоя API
-        localStorage.setItem('user_settings', JSON.stringify(settings));
-        console.log('Настройки сохранены в localStorage');
-        
+        localStorage.setItem("user_settings", JSON.stringify(settings));
+        console.log("Настройки сохранены в localStorage");
+
         try {
           // Проверяем, есть ли токен, прежде чем делать запрос к API
-          const token = Cookies.get('access_token');
+          const token = Cookies.get("access_token");
           if (token) {
-            console.log('Найден токен для запроса к API:', token.substring(0, 10) + '...');
-            console.log('Текущее состояние Authorization заголовка:', 
-              api.defaults.headers.common['Authorization'] ? 
-              api.defaults.headers.common['Authorization'].substring(0, 20) + '...' : 
-              'отсутствует'
+            console.log(
+              "Найден токен для запроса к API:",
+              token.substring(0, 10) + "..."
             );
-            
+            console.log(
+              "Текущее состояние Authorization заголовка:",
+              api.defaults.headers.common["Authorization"]
+                ? api.defaults.headers.common["Authorization"].substring(
+                    0,
+                    20
+                  ) + "..."
+                : "отсутствует"
+            );
+
             // Пробуем сохранить настройки на сервере
-            console.log('Отправляем запрос updateUserSettings с данными:', {settings});
+            console.log("Отправляем запрос updateUserSettings с данными:", {
+              settings,
+            });
             await settingsService.updateUserSettings(settings);
-            console.log('Настройки успешно сохранены на сервере');
+            console.log("Настройки успешно сохранены на сервере");
           } else {
-            console.warn('Попытка сохранения настроек без токена авторизации');
+            console.warn("Попытка сохранения настроек без токена авторизации");
           }
         } catch (apiError) {
-          console.error('Не удалось сохранить настройки на сервере:', apiError);
-          console.log('Ответ сервера при ошибке:', apiError.response?.data);
-          console.log('Статус ошибки:', apiError.response?.status);
-          console.log('Заголовки запроса:', apiError.config?.headers);
+          console.error("Не удалось сохранить настройки на сервере:", apiError);
+          console.log("Ответ сервера при ошибке:", apiError.response?.data);
+          console.log("Статус ошибки:", apiError.response?.status);
+          console.log("Заголовки запроса:", apiError.config?.headers);
           // Настройки уже сохранены локально выше
         }
-        
+
         // В любом случае перенаправляем на главную страницу
-        console.log('Перенаправляем на главную страницу');
-        this.$router.push('/');
+        console.log("Перенаправляем на главную страницу");
+        this.$router.push("/");
       } catch (err) {
-        console.error('Ошибка сохранения настроек:', err);
+        console.error("Ошибка сохранения настроек:", err);
         // Сохраняем базовые настройки локально и перенаправляем
         const basicSettings = settingsService.getDefaultSettings();
         basicSettings.map.defaultCity = this.cityName;
         basicSettings.map.defaultCoordinates = {
           lat: this.cityCoordinates.lat,
-          lng: this.cityCoordinates.lng
+          lng: this.cityCoordinates.lng,
         };
-        localStorage.setItem('user_settings', JSON.stringify(basicSettings));
-        console.log('Сохранены базовые настройки в localStorage из-за ошибки');
-        
+        localStorage.setItem("user_settings", JSON.stringify(basicSettings));
+        console.log("Сохранены базовые настройки в localStorage из-за ошибки");
+
         // Перенаправляем несмотря на ошибку
-        this.$router.push('/');
+        this.$router.push("/");
       }
-    }
-  }
+    },
+  },
 };
 </script>
 
 <style>
 /* Импортируем стили из LoginPage.css */
-@import '../assets/css/components/LoginPage.css';
+@import "../assets/css/components/LoginPage.css";
 
-.confirmation-wrapper, .search-wrapper {
+.confirmation-wrapper,
+.search-wrapper {
   width: 100%;
   text-align: center;
 }
@@ -390,8 +468,12 @@ export default {
 }
 
 @keyframes spin {
-  0% { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .city-question {

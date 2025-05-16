@@ -41,6 +41,22 @@ export const register = async (userData) => {
         // Небольшая задержка для применения токена
         await new Promise(resolve => setTimeout(resolve, 100));
 
+        // Создаем настройки по умолчанию для нового пользователя
+        try {
+            const { settingsService } = await import('./settings');
+            const defaultSettings = settingsService.getDefaultSettings();
+            console.log('Создаем настройки по умолчанию для нового пользователя:', defaultSettings);
+
+            // Сохраняем настройки локально
+            localStorage.setItem('user_settings', JSON.stringify(defaultSettings));
+
+            // Отправляем настройки на сервер
+            await settingsService.updateUserSettings(defaultSettings);
+            console.log('Настройки по умолчанию успешно созданы для нового пользователя');
+        } catch (settingsError) {
+            console.error('Ошибка при создании настроек по умолчанию:', settingsError);
+        }
+
         return response.data;
     } catch (error) {
         console.error('Ошибка регистрации:', error);
