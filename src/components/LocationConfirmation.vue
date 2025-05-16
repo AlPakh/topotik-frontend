@@ -173,22 +173,31 @@ export default {
 
         console.log("Получены данные о местоположении:", data);
 
+        // Логируем IP-адрес пользователя из полученного ответа
+        if (data.client_ip) {
+          console.log(`IP-адрес пользователя: ${data.client_ip}`);
+          console.log(
+            `Запрос к API геолокации: https://api.ipapi.is/?q=${data.client_ip}`
+          );
+        }
+
         if (!data.error) {
-          this.cityName = `${data.city || "Неизвестный город"}, ${
-            data.country_name || data.country || ""
+          this.cityName = `${data.location?.city || "Неизвестный город"}, ${
+            data.location?.country_name || data.location?.country || ""
           }`.trim();
           this.cityCoordinates = {
-            lat: parseFloat(data.latitude),
-            lng: parseFloat(data.longitude),
+            lat: parseFloat(data.location?.latitude),
+            lng: parseFloat(data.location?.longitude),
           };
 
           console.log("Определено местоположение:", {
             город: this.cityName,
             координаты: this.cityCoordinates,
+            ip: data.client_ip || "неизвестен",
           });
 
           // Если не удалось определить город, устанавливаем город по умолчанию
-          if (!data.city) {
+          if (!data.location?.city) {
             console.log("Город не определен, использую настройки по умолчанию");
             // Используем расширенные настройки по умолчанию
             const defaultMapSettings = {
@@ -206,9 +215,26 @@ export default {
             this.cityName = defaultMapSettings.defaultCity;
             this.cityCoordinates = defaultMapSettings.defaultCoordinates;
           }
+          // В любом случае, если у нас есть координаты, запрашиваем информацию у Nominatim
+          if (
+            this.cityCoordinates &&
+            this.cityCoordinates.lat &&
+            this.cityCoordinates.lng
+          ) {
+            console.log(
+              "Получены координаты, запрашиваем информацию из Nominatim API"
+            );
+            await this.fetchAdditionalLocationData(
+              this.cityCoordinates.lat,
+              this.cityCoordinates.lng
+            );
+          } else {
+            console.warn("Отсутствуют координаты для запроса в Nominatim API");
+          }
         } else {
+          console.error("Ошибка от API геолокации:", data.error_details);
           throw new Error(
-            data.reason || "Не удалось определить местоположение"
+            data.error_details || "Не удалось определить местоположение"
           );
         }
       } catch (err) {
@@ -245,6 +271,42 @@ export default {
         this.cityCoordinates = defaultMapSettings.defaultCoordinates;
       } finally {
         this.loading = false;
+      }
+    },
+
+    // Новый метод для получения дополнительных данных о местоположении через Nominatim
+    async fetchAdditionalLocationData(lat, lng) {
+      try {
+        console.log(`Запрос к Nominatim API для координат: ${lat}, ${lng}`);
+        const url = new URL("https://nominatim.openstreetmap.org/reverse");
+        url.searchParams.set("format", "jsonv2");
+        url.searchParams.set("lat", lat);
+        url.searchParams.set("lon", lng);
+        url.searchParams.set("accept-language", "en");
+
+        console.log(`Отправляем запрос к: ${url.toString()}`);
+
+        const response = await fetch(url, {
+          headers: {
+            "Accept-Language": "en",
+            "User-Agent": "Topotik/1.0",
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`HTTP error ${response.status}`);
+        }
+
+        const result = await response.json();
+        console.log("Ответ от Nominatim API:", result);
+
+        if (result.display_name) {
+          this.cityName = result.display_name;
+          console.log(`Nominatim определил местоположение: ${this.cityName}`);
+        }
+      } catch (err) {
+        console.error("Ошибка при получении данных от Nominatim:", err);
+        // В случае ошибки оставляем исходные данные о местоположении
       }
     },
 
