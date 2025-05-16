@@ -34,7 +34,7 @@ VUE_APP_API_URL=http://localhost:8000
 
 ### Для продакшена (.env.production):
 ```
-VUE_APP_API_URL=https://topotik-backend.onrender.com
+VUE_APP_API_URL=https://topotik.onrender.com
 ```
 
 Эти настройки позволят вам гибко переключаться между локальной разработкой и продакшн-окружением.
