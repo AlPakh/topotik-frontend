@@ -49,6 +49,20 @@ export const updateMap = async (mapId, mapData) => {
 }
 
 /**
+ * Обновить фоновое изображение карты
+ * @param {string} mapId - ID карты
+ * @param {string} imageId - ID изображения
+ */
+export const updateMapBackground = async (mapId, imageId) => {
+    console.log(`Вызов API для обновления фонового изображения карты ${mapId} с изображением ${imageId}`)
+    const response = await api.put(`/maps/${mapId}/background-image`, {
+        background_image_id: imageId
+    })
+    console.log('Ответ API при обновлении фона карты:', response.data)
+    return response.data
+}
+
+/**
  * Переместить карту в другую папку
  * @param {string} mapId - ID карты
  * @param {string} folderId - ID новой папки
