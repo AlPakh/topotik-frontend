@@ -48,7 +48,11 @@
 
           <!-- Если выбрали карту -->
           <div v-else-if="selectedItem && selectedItem.type === 'map'">
-            <map-preview :map="selectedItem" @openMap="navigateToMap" />
+            <map-preview
+              :map="selectedItem"
+              @upload-image="handleImageUpload"
+              @openMap="navigateToMap"
+            />
           </div>
 
           <!-- Загрузка и сообщения об ошибках -->
@@ -112,6 +116,14 @@
         </div>
       </div>
     </div>
+
+    <!-- Компонент загрузки изображения -->
+    <image-uploader
+      v-if="showImageUploader"
+      :mapId="currentMapId"
+      @close="closeImageUploader"
+      @upload-success="handleImageUploadSuccess"
+    />
   </div>
 </template>
 
@@ -122,12 +134,14 @@ import SwitchView from "@/components/SwitchView.vue";
 import FolderContentView from "@/components/FolderContentView.vue";
 import AppHeader from "@/components/AppHeader.vue";
 import MapPreview from "@/components/MapPreview.vue";
+import ImageUploader from "@/components/ImageUploader.vue";
 import {
   getFolderStructure,
   createMap,
   moveMapToFolder,
   deleteMap,
   updateMap,
+  getMapById,
 } from "@/services/maps";
 import {
   createFolder,
@@ -151,6 +165,7 @@ export default {
     FolderContentView,
     AppHeader,
     MapPreview,
+    ImageUploader,
   },
   data() {
     return {
@@ -158,6 +173,8 @@ export default {
       selectedItem: null,
       viewMode: "list",
       showCreatePanel: false, // Флаг для отображения панели создания
+      showImageUploader: false, // Флаг для отображения загрузчика изображений
+      currentMapId: null, // ID карты для загрузки изображения
       deleteConfirmation: {
         show: false,
         itemId: null,
@@ -354,12 +371,40 @@ export default {
       this.showCreatePanel = false;
     },
 
-    // Новый метод для навигации к карте
-    navigateToMap(id, name) {
+    // Метод для навигации к карте
+    navigateToMap(id) {
+      // Находим карту по ID для определения её типа
+      const mapItem = this.findItemById(id, this.folderStructure);
+
+      if (!mapItem) {
+        console.error("Карта не найдена:", id);
+        return;
+      }
+
+      console.log("Данные карты для навигации:", mapItem);
+
+      // Определяем маршрут в зависимости от типа карты
+      // Учитываем оба возможных поля типа карты (map_type и mapType)
+      const mapType = mapItem.map_type || mapItem.mapType;
+      let route = "MapView"; // По умолчанию открываем как OSM карту
+
+      if (mapType === "custom_image" || mapType === "custom") {
+        route = "CustomMapView";
+      }
+
+      console.log(
+        "Переход на маршрут:",
+        route,
+        "с ID:",
+        id,
+        "и названием:",
+        mapItem.title || mapItem.name
+      );
+
       this.$router.push({
-        name: "MapView",
+        name: route,
         params: { id },
-        query: { name },
+        query: { name: mapItem.title || mapItem.name },
       });
     },
 
@@ -801,6 +846,252 @@ export default {
           return true; // Фильтрация карт выполняется на сервере
         }
       });
+    },
+
+    // Новый метод для открытия загрузчика изображений
+    handleImageUpload(mapId) {
+      this.currentMapId = mapId;
+      this.showImageUploader = true;
+    },
+
+    // Закрытие загрузчика изображений
+    closeImageUploader() {
+      this.showImageUploader = false;
+      // Не сбрасываем currentMapId сразу, так как он нужен для обработки результата загрузки
+    },
+
+    // Полный сброс состояния загрузчика изображений после обработки результата
+    resetImageUploader() {
+      this.showImageUploader = false;
+      this.currentMapId = null;
+    },
+
+    // Обработка успешной загрузки изображения
+    async handleImageUploadSuccess({ imageId, url, mapData }) {
+      console.log("MainPage - Получен callback успешной загрузки изображения:");
+      console.log("MainPage - imageId:", imageId);
+      console.log("MainPage - url:", url);
+      console.log("MainPage - mapData:", mapData);
+      console.log("MainPage - currentMapId:", this.currentMapId);
+
+      try {
+        // Закрываем загрузчик после успешной загрузки, но сохраняем ID текущей карты
+        this.closeImageUploader();
+
+        // Получаем актуальную информацию о карте напрямую
+        if (this.currentMapId) {
+          try {
+            console.log(
+              "MainPage - Запрос актуальной информации о карте:",
+              this.currentMapId
+            );
+            const updatedMapData = await getMapById(this.currentMapId);
+            console.log(
+              "MainPage - Получены актуальные данные карты:",
+              updatedMapData
+            );
+
+            // Обновляем карту в структуре папок
+            this.updateMapInStructure(updatedMapData);
+          } catch (err) {
+            console.error("MainPage - Ошибка получения данных карты:", err);
+          }
+        }
+
+        // Обновляем структуру после загрузки изображения
+        console.log(
+          "MainPage - Запрос обновления структуры папок после загрузки изображения"
+        );
+        await this.loadFolderStructure();
+        console.log("MainPage - Структура папок обновлена");
+
+        // Обновляем текущий выбранный элемент, если это карта с загруженным изображением
+        console.log("MainPage - Проверка текущего выбранного элемента");
+        if (this.selectedItem) {
+          console.log("MainPage - Текущий элемент:", this.selectedItem.type);
+          console.log(
+            "MainPage - ID выбранной карты:",
+            this.selectedItem.id || this.selectedItem.map_id
+          );
+          console.log("MainPage - ID обновляемой карты:", this.currentMapId);
+        }
+
+        if (this.selectedItem && this.selectedItem.type === "map") {
+          const selectedMapId =
+            this.selectedItem.map_id || this.selectedItem.id;
+          console.log(
+            "MainPage - Сравнение ID карт:",
+            selectedMapId,
+            this.currentMapId
+          );
+
+          if (selectedMapId === this.currentMapId) {
+            console.log(
+              "MainPage - Найден выбранный элемент (карта) для обновления:",
+              this.selectedItem.title || this.selectedItem.name
+            );
+
+            // Если у нас есть полные данные карты из API, используем их напрямую
+            if (mapData) {
+              console.log("MainPage - Используем данные карты из ответа API");
+
+              // Создаем обновленный объект карты, сохраняя все существующие поля
+              // и обновляя необходимые поля из mapData
+              this.selectedItem = {
+                ...this.selectedItem,
+                background_image_id: mapData.background_image_id,
+                background_image_url: mapData.background_image_url,
+                is_custom: mapData.is_custom,
+              };
+
+              console.log(
+                "MainPage - Обновленная карта:",
+                JSON.stringify({
+                  id: this.selectedItem.id,
+                  title: this.selectedItem.title || this.selectedItem.name,
+                  background_image_url: this.selectedItem.background_image_url,
+                  background_image_id: this.selectedItem.background_image_id,
+                })
+              );
+
+              // Сбрасываем currentMapId только после успешного обновления
+              this.resetImageUploader();
+              return; // Выходим из метода, т.к. мы уже обновили данные
+            }
+
+            // Находим обновленную версию карты в дереве (это запасной вариант)
+            const updatedItem = this.findItemById(
+              this.currentMapId,
+              this.folderStructure
+            );
+
+            console.log(
+              "MainPage - Результат поиска обновленной карты:",
+              updatedItem ? "Найдена" : "Не найдена"
+            );
+
+            if (updatedItem) {
+              console.log(
+                "MainPage - Обновленная карта перед изменениями:",
+                JSON.stringify({
+                  id: updatedItem.id,
+                  title: updatedItem.title || updatedItem.name,
+                  background_image_url: updatedItem.background_image_url,
+                  background_image_id: updatedItem.background_image_id,
+                })
+              );
+
+              // Явно обновляем необходимые поля
+              updatedItem.background_image_url = url;
+              updatedItem.background_image_id = imageId;
+
+              console.log("MainPage - Установлено background_image_url:", url);
+              console.log(
+                "MainPage - Установлено background_image_id:",
+                imageId
+              );
+
+              // Обновляем выбранный элемент для реактивного обновления UI
+              console.log("MainPage - Применяем обновленные данные карты к UI");
+              this.selectedItem = { ...updatedItem };
+
+              console.log(
+                "MainPage - Обновленная карта после изменений:",
+                JSON.stringify({
+                  id: this.selectedItem.id,
+                  title: this.selectedItem.title || this.selectedItem.name,
+                  background_image_url: this.selectedItem.background_image_url,
+                  background_image_id: this.selectedItem.background_image_id,
+                })
+              );
+            } else {
+              // Если по какой-то причине карта не найдена в структуре,
+              // обновим напрямую текущий выбранный элемент
+              console.log(
+                "MainPage - Карта не найдена в структуре, обновляем напрямую"
+              );
+              this.selectedItem.background_image_url = url;
+              this.selectedItem.background_image_id = imageId;
+
+              // Принудительно вызываем обновление Vue через клонирование объекта
+              this.selectedItem = { ...this.selectedItem };
+            }
+          } else {
+            console.log(
+              "MainPage - ID выбранной карты не соответствует обновляемой карте"
+            );
+          }
+        } else {
+          console.log(
+            "MainPage - Выбранный элемент не соответствует обновляемой карте или не является картой"
+          );
+          if (this.selectedItem) {
+            console.log(
+              "MainPage - Текущий выбранный элемент:",
+              this.selectedItem.type,
+              this.selectedItem.id || this.selectedItem.map_id
+            );
+          }
+        }
+
+        // Показываем уведомление об успешной загрузке
+        console.log("MainPage - Показываем уведомление об успешной загрузке");
+        this.$alert?.success("Изображение успешно загружено");
+
+        // Сбрасываем currentMapId только после всех операций
+        this.resetImageUploader();
+      } catch (err) {
+        console.error(
+          "MainPage - Ошибка при обновлении после загрузки изображения:",
+          err
+        );
+        // В случае ошибки также сбрасываем состояние
+        this.resetImageUploader();
+      }
+    },
+
+    // Новый метод для обновления карты в структуре папок
+    updateMapInStructure(mapData) {
+      if (!mapData || !mapData.map_id) return;
+
+      console.log(
+        "MainPage - Обновление карты в структуре папок:",
+        mapData.map_id
+      );
+
+      // Функция для рекурсивного обхода структуры
+      const updateMapInItems = (items) => {
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+
+          // Проверяем, является ли элемент искомой картой
+          if (
+            item.type === "map" &&
+            (item.id === mapData.map_id || item.map_id === mapData.map_id)
+          ) {
+            console.log("MainPage - Найдена карта для обновления в структуре");
+
+            // Обновляем поля карты
+            item.background_image_id = mapData.background_image_id;
+            item.background_image_url = mapData.background_image_url;
+            item.is_custom = mapData.is_custom;
+
+            return true;
+          }
+
+          // Если это папка, проверяем ее содержимое
+          if (item.type === "folder" && item.children) {
+            if (updateMapInItems(item.children)) {
+              return true;
+            }
+          }
+        }
+
+        return false;
+      };
+
+      // Запускаем поиск и обновление в структуре папок
+      updateMapInItems(this.folderStructure);
     },
   },
 

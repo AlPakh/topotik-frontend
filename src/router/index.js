@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import MainPage from '@/views/MainPage.vue'
 import MapView from '@/views/MapView.vue'
+import CustomMapView from '@/views/CustomMapView.vue'
 import { isAuthenticated } from '@/services/auth'
 import LoginPage from '@/components/LoginPage.vue'
 import UserProfile from '@/views/UserProfile.vue'
@@ -41,6 +42,12 @@ const routes = [
         path: '/map/:id',
         name: 'MapView',
         component: MapView,
+        meta: { requiresAuth: true }
+    },
+    {
+        path: '/custom-map/:id',
+        name: 'CustomMapView',
+        component: CustomMapView,
         meta: { requiresAuth: true }
     },
     {

@@ -353,7 +353,12 @@ export default {
           }
 
           // Продолжаем инициализацию для карт OSM
-          this.mapName = mapDetails.title || "Карта без названия";
+          // Устанавливаем название карты из полученных данных
+          if (mapDetails) {
+            this.mapName =
+              mapDetails.title || mapDetails.name || "Карта без названия";
+            console.log("Установлено название карты:", this.mapName);
+          }
         } catch (err) {
           console.warn("Не удалось получить данные карты:", err);
         }

@@ -175,8 +175,8 @@ export const settingsService = {
                 defaultCity: "Saint Petersburg, Northwestern Federal District, Russia",
                 defaultZoom: 13,
                 defaultCoordinates: {
-                    lat: 59.9606739,
-                    lng: 30.1586551
+                    lat: 59.938784,
+                    lng: 30.314997
                 }
             },
             ui: {

@@ -97,3 +97,136 @@ api.interceptors.response.use(
 
 // Экспортируем клиент API
 export { api };
+
+// API для работы с картами
+export const mapsApi = {
+    // Получение всех карт пользователя
+    async getUserMaps() {
+        const token = Cookies.get('access_token');
+        return await fetch(`${API_URL}/maps`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            }
+        }).then(res => res.json());
+    },
+
+    // Создание новой карты
+    async createMap(data) {
+        const token = Cookies.get('access_token');
+        return await fetch(`${API_URL}/maps`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(data)
+        }).then(res => res.json());
+    },
+
+    // Создание пользовательской карты с фоновым изображением
+    async createCustomMap(data, backgroundImageId = null) {
+        const token = Cookies.get('access_token');
+        const mapData = {
+            ...data,
+            is_custom: true,
+            background_image_id: backgroundImageId
+        };
+
+        return await fetch(`${API_URL}/maps`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify(mapData)
+        }).then(res => res.json());
+    },
+
+    // Обновление фонового изображения для карты
+    async updateMapBackground(mapId, imageId) {
+        const token = Cookies.get('access_token');
+        return await fetch(`${API_URL}/maps/${mapId}/background-image`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({ background_image_id: imageId })
+        }).then(res => res.json());
+    },
+
+    // Удаление карты с удалением фонового изображения, если оно не используется в других картах
+    async deleteMapWithImage(mapId) {
+        const token = Cookies.get('access_token');
+        return await fetch(`${API_URL}/maps/${mapId}/with-image`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        }).then(res => res.json());
+    },
+};
+
+// API для работы с изображениями
+export const imagesApi = {
+    // Загрузка изображения на сервер
+    async uploadImage(file, description = null) {
+        const token = Cookies.get('access_token');
+
+        const formData = new FormData();
+        formData.append('file', file);
+        if (description) {
+            formData.append('description', description);
+        }
+
+        return await fetch(`${API_URL}/images/upload`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            body: formData
+        }).then(res => res.json());
+    },
+
+    // Получение списка изображений пользователя
+    async getUserImages(limit = 50, offset = 0) {
+        const token = Cookies.get('access_token');
+        return await fetch(`${API_URL}/images/list?limit=${limit}&offset=${offset}`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            }
+        }).then(res => res.json());
+    },
+
+    // Получение информации об изображении по ID
+    async getImage(imageId) {
+        const token = Cookies.get('access_token');
+        return await fetch(`${API_URL}/images/${imageId}`, {
+            method: 'GET',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            }
+        }).then(res => res.json());
+    },
+
+    // Удаление изображения
+    async deleteImage(imageId) {
+        const token = Cookies.get('access_token');
+        return await fetch(`${API_URL}/images/${imageId}`, {
+            method: 'DELETE',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            }
+        }).then(res => {
+            if (!res.ok) {
+                throw new Error(`Ошибка при удалении изображения: ${res.status}`);
+            }
+            return res.json();
+        });
+    }
+};
