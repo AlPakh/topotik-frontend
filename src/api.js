@@ -96,7 +96,7 @@ api.interceptors.response.use(
 );
 
 // Экспортируем клиент API
-export { api };
+export { api, API_URL };
 
 // API для работы с картами
 export const mapsApi = {

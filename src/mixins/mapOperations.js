@@ -2,6 +2,7 @@
 // Миксин с общей логикой для карт (OSM и пользовательских)
 // import { api } from '@/api';
 import Cookies from 'js-cookie';
+import { API_URL } from '@/api';
 
 export const mapOperationsMixin = {
     methods: {
@@ -9,7 +10,7 @@ export const mapOperationsMixin = {
         async getMapById(mapId) {
             try {
                 const response = await fetch(
-                    `${process.env.VUE_APP_API_URL || 'http://localhost:8000'}/maps/${mapId}`,
+                    `${API_URL}/maps/${mapId}`,
                     {
                         method: "GET",
                         headers: {
@@ -34,7 +35,7 @@ export const mapOperationsMixin = {
         async loadCollectionsFromServer(mapId) {
             try {
                 const response = await fetch(
-                    `${process.env.VUE_APP_API_URL || 'http://localhost:8000'}/collections?map_id=${mapId}`,
+                    `${API_URL}/collections?map_id=${mapId}`,
                     {
                         method: "GET",
                         headers: {

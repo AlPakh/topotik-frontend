@@ -1114,16 +1114,13 @@ export default {
     // Удаление коллекции с сервера
     async deleteCollectionFromServer(collectionId) {
       try {
-        const response = await fetch(
-          `http://localhost:8000/collections/${collectionId}`,
-          {
-            method: "DELETE",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${Cookies.get("access_token")}`,
-            },
-          }
-        );
+        const response = await fetch(`${API_URL}/collections/${collectionId}`, {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${Cookies.get("access_token")}`,
+          },
+        });
 
         if (!response.ok) {
           console.warn(
@@ -1158,7 +1155,7 @@ export default {
 
         // Создаем коллекцию на сервере
         try {
-          const response = await fetch("http://localhost:8000/collections/", {
+          const response = await fetch(`${API_URL}/collections/`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -1365,23 +1362,20 @@ export default {
           try {
             console.log("Отправляем запрос на создание метки на сервере...");
             // Создаем маркер на сервере
-            const markerResponse = await fetch(
-              "http://localhost:8000/markers/",
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${Cookies.get("access_token")}`,
-                },
-                body: JSON.stringify({
-                  latitude: position[0],
-                  longitude: position[1],
-                  title: defaultName,
-                  description: "Описание метки",
-                  map_id: mapId,
-                }),
-              }
-            );
+            const markerResponse = await fetch(`${API_URL}/markers/`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                Authorization: `Bearer ${Cookies.get("access_token")}`,
+              },
+              body: JSON.stringify({
+                latitude: position[0],
+                longitude: position[1],
+                title: defaultName,
+                description: "Описание метки",
+                map_id: mapId,
+              }),
+            });
 
             console.log("Статус ответа сервера:", markerResponse.status);
 
@@ -1400,7 +1394,7 @@ export default {
             // Добавляем маркер в коллекцию
             console.log("Добавляем маркер в коллекцию", category.id);
             const addToCollectionResponse = await fetch(
-              `http://localhost:8000/collections/${category.id}/markers`,
+              `${API_URL}/collections/${category.id}/markers`,
               {
                 method: "POST",
                 headers: {
@@ -1430,7 +1424,7 @@ export default {
             console.log("Создаем статью для маркера");
             const markdownContent = ``;
             const articleResponse = await fetch(
-              `http://localhost:8000/markers/${newMarker.marker_id}/article`,
+              `${API_URL}/markers/${newMarker.marker_id}/article`,
               {
                 method: "POST",
                 headers: {
@@ -1527,7 +1521,7 @@ export default {
       if (!marker.id.toString().startsWith("local_")) {
         try {
           const response = await fetch(
-            `http://localhost:8000/markers/${marker.id}/article`,
+            `${API_URL}/markers/${marker.id}/article`,
             {
               method: "GET",
               headers: {
@@ -1616,7 +1610,7 @@ export default {
               "Создаем новый маркер на сервере для локального маркера"
             );
             try {
-              const response = await fetch(`http://localhost:8000/markers/`, {
+              const response = await fetch(`${API_URL}/markers/`, {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
@@ -1651,7 +1645,7 @@ export default {
                 this.currentCategory.id
               );
               const addToCollectionResponse = await fetch(
-                `http://localhost:8000/collections/${this.currentCategory.id}/markers`,
+                `${API_URL}/collections/${this.currentCategory.id}/markers`,
                 {
                   method: "POST",
                   headers: {
@@ -1676,7 +1670,7 @@ export default {
               // Создаем статью для нового маркера
               console.log("Создаем статью для маркера");
               const articleResponse = await fetch(
-                `http://localhost:8000/markers/${createdMarker.marker_id}/article`,
+                `${API_URL}/markers/${createdMarker.marker_id}/article`,
                 {
                   method: "POST",
                   headers: {
@@ -1715,7 +1709,7 @@ export default {
             try {
               // Обновляем основные данные маркера
               const response = await fetch(
-                `http://localhost:8000/markers/${updatedMarker.id}`,
+                `${API_URL}/markers/${updatedMarker.id}`,
                 {
                   method: "PUT",
                   headers: {
@@ -1743,7 +1737,7 @@ export default {
               // Обновляем статью маркера (markdown)
               console.log("Обновляем статью маркера");
               const articleResponse = await fetch(
-                `http://localhost:8000/markers/${updatedMarker.id}/article`,
+                `${API_URL}/markers/${updatedMarker.id}/article`,
                 {
                   method: "PUT",
                   headers: {
@@ -2232,17 +2226,14 @@ export default {
           // Если у категории нет ID, создаем новую коллекцию
           if (!collectionId || collectionId.toString().startsWith("local_")) {
             try {
-              const response = await fetch(
-                "http://localhost:8000/collections/",
-                {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${Cookies.get("access_token")}`,
-                  },
-                  body: JSON.stringify(collectionData),
-                }
-              );
+              const response = await fetch(`${API_URL}/collections/`, {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${Cookies.get("access_token")}`,
+                },
+                body: JSON.stringify(collectionData),
+              });
 
               if (!response.ok) {
                 throw new Error(
@@ -2261,7 +2252,7 @@ export default {
             // Обновляем существующую коллекцию
             try {
               const response = await fetch(
-                `http://localhost:8000/collections/${collectionId}`,
+                `${API_URL}/collections/${collectionId}`,
                 {
                   method: "PUT",
                   headers: {
@@ -2305,20 +2296,17 @@ export default {
             if (!markerId || markerId.toString().startsWith("local_")) {
               try {
                 // Создаем маркер
-                const markerResponse = await fetch(
-                  "http://localhost:8000/markers/",
-                  {
-                    method: "POST",
-                    headers: {
-                      "Content-Type": "application/json",
-                      Authorization: `Bearer ${Cookies.get("access_token")}`,
-                    },
-                    body: JSON.stringify({
-                      ...markerData,
-                      map_id: mapId,
-                    }),
-                  }
-                );
+                const markerResponse = await fetch(`${API_URL}/markers/`, {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    Authorization: `Bearer ${Cookies.get("access_token")}`,
+                  },
+                  body: JSON.stringify({
+                    ...markerData,
+                    map_id: mapId,
+                  }),
+                });
 
                 if (!markerResponse.ok) {
                   throw new Error(
@@ -2332,7 +2320,7 @@ export default {
 
                 // Добавляем маркер в коллекцию
                 const addToCollectionResponse = await fetch(
-                  `http://localhost:8000/collections/${collectionId}/markers`,
+                  `${API_URL}/collections/${collectionId}/markers`,
                   {
                     method: "POST",
                     headers: {
@@ -2353,7 +2341,7 @@ export default {
 
                 // Создаем статью для маркера
                 const articleResponse = await fetch(
-                  `http://localhost:8000/markers/${markerId}/article`,
+                  `${API_URL}/markers/${markerId}/article`,
                   {
                     method: "POST",
                     headers: {
@@ -2379,7 +2367,7 @@ export default {
               // Обновляем существующий маркер
               try {
                 const markerResponse = await fetch(
-                  `http://localhost:8000/markers/${markerId}`,
+                  `${API_URL}/markers/${markerId}`,
                   {
                     method: "PUT",
                     headers: {
@@ -2398,7 +2386,7 @@ export default {
 
                 // Обновляем статью для маркера
                 const articleResponse = await fetch(
-                  `http://localhost:8000/markers/${markerId}/article`,
+                  `${API_URL}/markers/${markerId}/article`,
                   {
                     method: "PUT",
                     headers: {
@@ -2791,7 +2779,7 @@ export default {
 
         // Загрузка статьи по ID маркера
         const response = await fetch(
-          `http://localhost:8000/markers/${marker.id}/article`,
+          `${API_URL}/markers/${marker.id}/article`,
           {
             headers: {
               Authorization: `Bearer ${token}`,

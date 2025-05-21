@@ -1,8 +1,12 @@
 // src/mixins/markerOperations.js
 // Миксин с общей логикой по работе с маркерами
-// import { api } from '@/api';
+import { api } from '@/api';
 import Cookies from 'js-cookie';
 import L from 'leaflet';
+import { API_URL } from '@/api';
+
+// Импортируем API_URL из файла api для консистентности
+import { api as apiClient } from '@/api';
 
 export const markerOperationsMixin = {
     methods: {
@@ -12,7 +16,7 @@ export const markerOperationsMixin = {
 
             try {
                 // Создаем маркер на сервере
-                const markerResponse = await fetch(`${process.env.VUE_APP_API_URL || 'http://localhost:8000'}/markers/`, {
+                const markerResponse = await fetch(`${API_URL}/markers/`, {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
@@ -35,7 +39,7 @@ export const markerOperationsMixin = {
 
                 // Добавляем маркер в коллекцию
                 const addToCollectionResponse = await fetch(
-                    `${process.env.VUE_APP_API_URL || 'http://localhost:8000'}/collections/${categoryId}/markers`,
+                    `${API_URL}/collections/${categoryId}/markers`,
                     {
                         method: "POST",
                         headers: {
@@ -141,7 +145,7 @@ export const markerOperationsMixin = {
                 const mapId = this.$route.params.id;
 
                 const collectionsResponse = await fetch(
-                    `${process.env.VUE_APP_API_URL || 'http://localhost:8000'}/collections?map_id=${mapId}`,
+                    `${API_URL}/collections?map_id=${mapId}`,
                     {
                         method: "GET",
                         headers: {
@@ -161,7 +165,7 @@ export const markerOperationsMixin = {
                 for (const collection of collections) {
                     try {
                         await fetch(
-                            `${process.env.VUE_APP_API_URL || 'http://localhost:8000'}/collections/${collection.collection_id}/markers/${markerId}`,
+                            `${API_URL}/collections/${collection.collection_id}/markers/${markerId}`,
                             {
                                 method: "DELETE",
                                 headers: {
@@ -176,7 +180,7 @@ export const markerOperationsMixin = {
                 }
 
                 // Удаляем сам маркер
-                const response = await fetch(`${process.env.VUE_APP_API_URL || 'http://localhost:8000'}/markers/${markerId}`, {
+                const response = await fetch(`${API_URL}/markers/${markerId}`, {
                     method: "DELETE",
                     headers: {
                         "Content-Type": "application/json",
