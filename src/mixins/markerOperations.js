@@ -1,12 +1,8 @@
 // src/mixins/markerOperations.js
 // Миксин с общей логикой по работе с маркерами
-import { api } from '@/api';
 import Cookies from 'js-cookie';
 import L from 'leaflet';
 import { API_URL } from '@/api';
-
-// Импортируем API_URL из файла api для консистентности
-import { api as apiClient } from '@/api';
 
 export const markerOperationsMixin = {
     methods: {

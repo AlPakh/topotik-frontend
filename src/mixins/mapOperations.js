@@ -1,6 +1,5 @@
 // src/mixins/mapOperations.js
 // Миксин с общей логикой для карт (OSM и пользовательских)
-// import { api } from '@/api';
 import Cookies from 'js-cookie';
 import { API_URL } from '@/api';
 
