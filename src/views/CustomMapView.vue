@@ -400,6 +400,44 @@ export default {
 
             const markers = markersResponse.data;
 
+            // Массив для хранения преобразованных маркеров
+            const processedMarkers = [];
+
+            // Для каждого маркера загружаем его статью (markdown-содержимое)
+            for (const marker of markers) {
+              // Базовая информация о маркере
+              const markerInfo = {
+                ...marker,
+                visible: true, // По умолчанию видимы
+                markdownContent: "", // Пустое содержимое по умолчанию
+              };
+
+              try {
+                // Загружаем статью маркера
+                const articleResponse = await api.get(
+                  `/markers/${marker.marker_id}/article`
+                );
+
+                if (
+                  articleResponse.data &&
+                  articleResponse.data.markdown_content !== undefined
+                ) {
+                  markerInfo.markdownContent =
+                    articleResponse.data.markdown_content;
+                  console.log(
+                    `Загружена статья для маркера ${marker.marker_id}`
+                  );
+                }
+              } catch (articleError) {
+                console.warn(
+                  `Не удалось загрузить статью для маркера ${marker.marker_id}:`,
+                  articleError
+                );
+              }
+
+              processedMarkers.push(markerInfo);
+            }
+
             // Добавляем категорию с её маркерами
             this.categories.push({
               id: collection.collection_id,
@@ -407,10 +445,7 @@ export default {
               color: collection.collection_color || "#8A2BE2", // Используем цвет коллекции или фиолетовый по умолчанию
               expanded: true, // По умолчанию раскрыта
               visible: true, // По умолчанию видима
-              markers: markers.map((marker) => ({
-                ...marker,
-                visible: true, // По умолчанию видимы
-              })),
+              markers: processedMarkers,
             });
           } catch (error) {
             console.error(
@@ -898,19 +933,70 @@ export default {
      * @param {Object} marker - маркер
      * @param {Object} category - категория
      */
-    openMarkerDetails(marker, category) {
+    async openMarkerDetails(marker, category) {
       // Закрываем все открытые тултипы
       this.closeAllTooltips();
 
       // Центрируем карту на выбранном маркере
       this.centerMapOnMarker(marker);
 
+      // Загружаем содержимое маркера с сервера
+      await this.loadMarkerContent(marker);
+
       // Устанавливаем текущий маркер и категорию
-      this.currentMarker = marker;
       this.currentCategory = category;
 
       // Показываем редактор маркера
       this.showMarkerEditor = true;
+    },
+
+    /**
+     * Загрузка содержимого маркера (markdown статьи) с сервера
+     * @param {Object} marker - маркер
+     */
+    async loadMarkerContent(marker) {
+      if (!marker) return;
+
+      console.log(
+        "Загрузка содержимого для маркера:",
+        marker.id || marker.marker_id
+      );
+
+      try {
+        // Используем копию маркера, чтобы сохранить исходные данные
+        this.currentMarker = { ...marker };
+
+        // Получаем ID маркера
+        const markerId = marker.id || marker.marker_id;
+
+        // Если это локальный маркер, не загружаем с сервера
+        if (markerId.toString().startsWith("local_")) {
+          console.log("Локальный маркер, не загружаем содержимое с сервера");
+          return;
+        }
+
+        // Загружаем статью маркера с сервера
+        const response = await api.get(`/markers/${markerId}/article`);
+
+        if (response.data) {
+          const article = response.data;
+          console.log("Загружена статья маркера:", article);
+
+          if (article && article.markdown_content !== undefined) {
+            // Обновляем данные текущего маркера
+            this.currentMarker.markdownContent = article.markdown_content;
+
+            // Также обновляем маркер в коллекции
+            this.updateMarkerInCategories(markerId, {
+              markdownContent: article.markdown_content,
+            });
+          }
+        } else {
+          console.warn(`Не удалось загрузить статью для маркера ${markerId}`);
+        }
+      } catch (error) {
+        console.error("Ошибка при загрузке статьи маркера:", error);
+      }
     },
 
     /**
@@ -1432,7 +1518,7 @@ export default {
           throw new Error("ID маркера не определен");
         }
 
-        // Сохраняем Markdown контент, если он есть
+        // Сначала обновляем markdown-содержимое
         if (updatedMarkerData.markdownContent !== undefined) {
           console.log(
             "Сохранение Markdown:",
@@ -1454,15 +1540,20 @@ export default {
           }
         }
 
-        // Обновляем основные данные маркера
+        // Затем обновляем основные данные маркера, включая название
+        // Даем приоритет name над title, т.к. name - это то, что пользователь изменяет в интерфейсе
+        const name = updatedMarkerData.name || updatedMarkerData.title;
+
         const markerData = {
           latitude:
             updatedMarkerData.latitude || updatedMarkerData.position?.[0],
           longitude:
             updatedMarkerData.longitude || updatedMarkerData.position?.[1],
-          title: updatedMarkerData.title || updatedMarkerData.name,
+          title: name, // Используем name в качестве title для сервера
           description: updatedMarkerData.description || "Описание метки",
         };
+
+        console.log("Отправка данных маркера на сервер:", markerData);
 
         const response = await api.put(`/markers/${markerId}`, markerData);
 
@@ -1470,9 +1561,15 @@ export default {
           console.log("Маркер успешно обновлен:", response.data);
 
           // Обновляем маркер в списке категорий
-          this.updateMarkerInCategories(markerId, updatedMarkerData);
+          const updatedFields = {
+            ...updatedMarkerData,
+            title: name, // Убедимся, что title обновлен
+            name: name, // Убедимся, что name обновлен
+          };
 
-          // Обновляем отображение маркеров на карте
+          this.updateMarkerInCategories(markerId, updatedFields);
+
+          // Перерисовываем маркеры на карте
           this.renderMarkers();
 
           return true;
