@@ -32,6 +32,39 @@ export const setAuthToken = (token) => {
     }
 };
 
+// Функция для обновления токена с использованием refresh токена
+export const refreshAccessToken = async () => {
+    try {
+        const refreshToken = Cookies.get('refresh_token');
+        if (!refreshToken) {
+            throw new Error('Refresh токен не найден');
+        }
+
+        const response = await fetch(`${API_URL}/auth/token/refresh`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ refresh_token: refreshToken })
+        });
+
+        if (!response.ok) {
+            throw new Error(`Ошибка при обновлении токена: ${response.status}`);
+        }
+
+        const data = await response.json();
+
+        // Обновляем токен в куки и заголовках
+        Cookies.set('access_token', data.access_token, { expires: 15 }); // 15 дней
+        setAuthToken(data.access_token);
+
+        return data;
+    } catch (error) {
+        console.error('Ошибка при обновлении токена:', error);
+        throw error;
+    }
+};
+
 // Инициализация токена при загрузке приложения
 const token = Cookies.get('access_token');
 if (token) {
@@ -73,24 +106,50 @@ api.interceptors.response.use(
         console.log('Данные ответа:', response.data);
         return response;
     },
-    error => {
-        // Если ошибка 401, пробуем обновить токен из cookie
-        if (error.response && error.response.status === 401) {
-            console.log('Ошибка авторизации, пробуем восстановить токен из cookie');
-            const token = Cookies.get('access_token');
-            if (token) {
-                console.log('Найден токен в cookie:', token.substring(0, 10) + '...');
-                // Повторно устанавливаем токен и пробуем запрос снова
-                setAuthToken(token);
+    async error => {
+        const originalRequest = error.config;
 
-                console.log('Токен переустановлен, но не повторяем запрос автоматически');
-                // Для сложных случаев можно попробовать повторить запрос
-                // const originalRequest = error.config;
-                // return api(originalRequest);
-            } else {
-                console.warn('Токен не найден в cookie при 401 ошибке');
+        // Предотвращаем бесконечный цикл
+        if (originalRequest._retry) {
+            return Promise.reject(error);
+        }
+
+        // Если ошибка 401 и это не запрос на обновление токена
+        if (error.response &&
+            error.response.status === 401 &&
+            !originalRequest.url.includes('/auth/token/refresh')) {
+
+            originalRequest._retry = true;
+
+            try {
+                // Пробуем обновить токен
+                await refreshAccessToken();
+
+                // Обновляем заголовок Authorization в исходном запросе
+                originalRequest.headers['Authorization'] = `Bearer ${Cookies.get('access_token')}`;
+
+                // Повторяем оригинальный запрос
+                return api(originalRequest);
+            } catch (refreshError) {
+                // Если не удалось обновить токен, показываем уведомление через сервис
+                try {
+                    // Импортируем сервис уведомлений
+                    const alertService = require('./services/alertService').default;
+                    alertService.showError('Ваша сессия истекла. Пожалуйста, войдите снова.', { duration: 8000 });
+                } catch (e) {
+                    // Если не получилось использовать сервис, используем стандартный alert
+                    alert('Ваша сессия истекла. Пожалуйста, войдите снова.');
+                }
+
+                // Перенаправляем на страницу входа
+                setTimeout(() => {
+                    window.location.href = '/login';
+                }, 1500);
+
+                return Promise.reject(refreshError);
             }
         }
+
         return Promise.reject(error);
     }
 );
