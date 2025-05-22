@@ -3,62 +3,134 @@
     <AppHeader />
 
     <div class="map-container">
-      <!-- Боковая панель с категориями и маркерами - аналогично MapView -->
-      <div class="map-sidebar">
-        <div class="sidebar-header">
-          <h3>{{ mapName }}</h3>
-        </div>
-
-        <div class="marker-categories">
-          <div
-            v-for="category in categories"
-            :key="category.id"
-            class="category"
-          >
-            <div class="category-header" :style="{ color: category.color }">
-              <span class="toggle-icon" @click="toggleCategory(category)">
-                <div
-                  class="arrow-icon"
-                  :class="{ 'arrow-down': category.expanded }"
-                >
-                  <img src="@/assets/svg/arrow.svg" alt="Arrow" />
-                </div>
-              </span>
-              <span class="category-name">{{ category.name }}</span>
-              <span
-                class="visibility-toggle"
-                @click="toggleCategoryVisibility(category)"
-              >
-                <span v-if="category.visible">👁️</span>
-                <span v-else>👁️‍🗨️</span>
-              </span>
-              <button
-                class="dots-button"
-                @click="showCategoryMenu(category, $event)"
-              >
-                ⋮
-              </button>
-            </div>
-
-            <!-- Список маркеров категории -->
-            <div v-if="category.expanded" class="markers-list">
-              <!-- Код маркеров аналогичен MapView.vue -->
-            </div>
-          </div>
-        </div>
-
-        <div class="create-btn-container">
-          <button class="create-btn" @click="showCreatePanel = true">
-            Создать
-          </button>
-        </div>
-      </div>
+      <!-- Боковая панель с категориями и маркерами через отдельный компонент -->
+      <MapSidebar
+        :categories="categories"
+        :mapName="mapName"
+        @show-create-panel="showCreatePanel = true"
+        @category-toggled="renderMarkers"
+        @category-visibility-changed="renderMarkers"
+        @marker-visibility-changed="renderMarkers"
+        @show-category-menu="showCategoryMenuHandler"
+        @show-marker-menu="showMarkerMenuHandler"
+        @marker-drop="handleMarkerDrop"
+        @category-drop="handleCategoryDrop"
+        @marker-drag-start="onMarkerDragStartHandler"
+      />
 
       <div class="map-view">
         <!-- Контейнер карты с пользовательским изображением -->
         <div id="map" class="map-container" ref="mapContainer"></div>
 
-        <!-- Заглушки для диалогов и панелей - будут добавлены позже -->
+        <!-- Панель создания элементов -->
+        <div v-if="showCreatePanel" class="create-overlay">
+          <div class="create-panel-wrapper">
+            <div class="panel-header">
+              <h3>Создать элемент на карте</h3>
+              <button class="close-button" @click="showCreatePanel = false">
+                &times;
+              </button>
+            </div>
+
+            <div class="create-options">
+              <div class="create-option" @click="createCategory">
+                <div class="option-icon">📁</div>
+                <div class="option-title">Категория меток</div>
+                <div class="option-description">Создать новую группу меток</div>
+              </div>
+
+              <div class="create-option" @click="createMarker">
+                <div class="option-icon">📍</div>
+                <div class="option-title">Метка на карте</div>
+                <div class="option-description">
+                  Создать метку в выбранной категории
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Диалог выбора категории для метки -->
+        <div
+          v-if="showCategoryDialog"
+          class="select-category-overlay"
+          @click.self="closeCategoryDialog"
+        >
+          <div class="select-category-dialog">
+            <div class="select-dialog-header">
+              Выберите категорию для новой метки
+            </div>
+            <select
+              class="category-select"
+              v-model="selectedCategoryId"
+              @change="onCategorySelected"
+            >
+              <option
+                v-for="category in categories"
+                :key="category.id"
+                :value="category.id"
+                :style="{ color: category.color }"
+              >
+                {{ category.name }}
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Редактор метки -->
+        <MarkerEditor
+          v-if="showMarkerEditor"
+          :marker="currentMarker"
+          :category="currentCategory"
+          @save="saveMarkerChanges"
+          @close="showMarkerEditor = false"
+        />
+
+        <!-- Универсальное контекстное меню -->
+        <ContextMenu
+          v-if="showContextMenu"
+          :show="showContextMenu"
+          :position="menuPosition"
+          :items="contextMenuItems"
+          @select="handleMenuAction"
+          @close="showContextMenu = false"
+          :autoClose="true"
+          :closeDelay="300"
+        />
+
+        <!-- Редактор цвета коллекции -->
+        <EditCollectionColor
+          v-if="showColorEditor"
+          :collection="currentCategory"
+          @close="showColorEditor = false"
+          @update="onCollectionColorUpdated"
+        />
+
+        <!-- Диалог подтверждения удаления -->
+        <div v-if="showDeleteConfirmation" class="confirmation-dialog-overlay">
+          <div class="confirmation-dialog">
+            <h3>Подтверждение удаления</h3>
+            <p>{{ confirmationMessage }}</p>
+            <div class="confirmation-input">
+              <label
+                >Для подтверждения введите "{{ itemToDelete.name }}":</label
+              >
+              <input v-model="confirmationInput" type="text" />
+            </div>
+            <div class="dialog-actions">
+              <button
+                @click="confirmDeleteAction"
+                :disabled="confirmationInput !== itemToDelete.name"
+                class="danger-button"
+              >
+                Удалить
+              </button>
+              <button @click="cancelDelete" class="cancel-button">
+                Отмена
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -69,13 +141,17 @@
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import AppHeader from "@/components/AppHeader.vue";
-// Компоненты, необходимые для будущей реализации
-// import MarkerEditor from "@/components/MarkerEditor.vue";
-// import ContextMenu from "@/components/ContextMenu.vue";
-// import EditCollectionColor from "@/components/EditCollectionColor.vue";
+// Импортируем все необходимые компоненты
+import MarkerEditor from "@/components/MarkerEditor.vue";
+import ContextMenu from "@/components/ContextMenu.vue";
+import EditCollectionColor from "@/components/EditCollectionColor.vue";
+import MapSidebar from "@/components/MapSidebar.vue";
 import { mapOperationsMixin } from "@/mixins/mapOperations";
 import { markerOperationsMixin } from "@/mixins/markerOperations";
 import Cookies from "js-cookie";
+import { getMapById } from "@/services/maps";
+import { moveMarkerBetweenCollections } from "@/services/collections";
+import { api } from "@/api";
 
 // Определение URL API сервера из переменных окружения
 const API_URL = process.env.VUE_APP_API_URL || "http://localhost:8000";
@@ -84,9 +160,10 @@ export default {
   name: "CustomMapView",
   components: {
     AppHeader,
-    // MarkerEditor,
-    // ContextMenu,
-    // EditCollectionColor,
+    MapSidebar,
+    MarkerEditor,
+    ContextMenu,
+    EditCollectionColor,
   },
   // Подключаем миксины для переиспользования логики
   mixins: [mapOperationsMixin, markerOperationsMixin],
@@ -126,6 +203,9 @@ export default {
       dragEnterMarker: null,
       pendingMarkerCategory: null,
       selectedCategoryId: null,
+
+      // Новые поля для контекстного меню
+      selectedContextType: null,
     };
   },
 
@@ -139,54 +219,41 @@ export default {
   },
 
   mounted() {
-    this.initCustomMap();
-    this.loadMapData();
-
-    // Обработчик клика вне контекстного меню
+    console.log("CustomMapView mounted - инициализация компонента");
     document.addEventListener("click", this.handleOutsideClick);
+    this.initMap();
   },
 
   beforeUnmount() {
-    try {
-      // Закрываем все тултипы
-      this.closeAllTooltips();
-
-      // Удаляем все маркеры
-      Object.values(this.leafletMarkers).forEach((marker) => {
-        if (marker && marker.getTooltip) {
-          try {
-            if (marker.getTooltip()) {
-              marker.closeTooltip();
-              marker.unbindTooltip();
-            }
-            this.map.removeLayer(marker);
-          } catch (e) {
-            console.warn("Ошибка при удалении маркера:", e);
-          }
-        }
-      });
-
-      // Удаляем обработчики событий
-      if (this.map) {
-        this.map.off();
-        document.removeEventListener("click", this.handleOutsideClick);
-
-        // Уничтожаем карту
-        this.map.remove();
-      }
-    } catch (e) {
-      console.error("Ошибка при уничтожении карты:", e);
+    console.log("CustomMapView beforeUnmount - очистка компонента");
+    document.removeEventListener("click", this.handleOutsideClick);
+    if (this.map) {
+      this.map.off();
+      this.map.remove();
     }
   },
 
   methods: {
-    // ====== Методы для инициализации и настройки карты ======
-
     /**
-     * Инициализация карты с пользовательским изображением
+     * Инициализация карты
      */
-    async initCustomMap() {
+    async initMap() {
       try {
+        console.log("Инициализация пользовательской карты...");
+
+        // Получаем данные карты с использованием сервисной функции
+        const mapId = this.$route.params.id;
+        const mapData = await getMapById(mapId);
+
+        // Устанавливаем название карты из полученных данных
+        if (mapData) {
+          this.mapName = mapData.title || "Пользовательская карта";
+          console.log(
+            "Установлено название пользовательской карты:",
+            this.mapName
+          );
+        }
+
         // Создаем карту с базовыми настройками
         const mapElement = this.$refs.mapContainer;
         if (!mapElement) {
@@ -196,7 +263,11 @@ export default {
 
         // Удаляем предыдущую карту, если она существует
         if (this.map) {
-          this.map.remove();
+          try {
+            this.map.remove();
+          } catch (e) {
+            console.warn("Ошибка при удалении старой карты:", e);
+          }
         }
 
         // Создаем новую карту с преднастроенной системой координат
@@ -211,7 +282,20 @@ export default {
           attributionControl: false,
           center: [500, 500], // Центрируем по умолчанию
           zoom: 0,
+          // Отключаем анимацию для предотвращения ошибок
+          zoomAnimation: false,
+          fadeAnimation: false,
+          markerZoomAnimation: false,
+          // Другие настройки для стабильности
+          preferCanvas: true,
+          doubleClickZoom: false,
+          // Включаем масштабирование колесиком мыши
+          scrollWheelZoom: true,
         });
+
+        // Добавляем обработчик закрытия тултипов перед изменением масштаба
+        this.map.on("zoomstart", this.closeAllTooltips);
+        this.map.on("movestart", this.closeAllTooltips);
 
         // Добавляем обработчик клика по карте для создания меток
         this.map.on("click", this.onMapClick);
@@ -219,10 +303,41 @@ export default {
         // Настраиваем элементы управления
         L.control.zoom({ position: "topleft" }).addTo(this.map);
 
+        console.log("Карта успешно инициализирована");
+
         // Загружаем данные карты (фоновое изображение и метки)
-        await this.loadMapData();
+        // Выполняем загрузку с задержкой, чтобы карта успела полностью инициализироваться
+        setTimeout(() => this.loadMapData(), 100);
       } catch (error) {
         console.error("Ошибка при инициализации карты:", error);
+      }
+    },
+
+    /**
+     * Получение данных карты по ID
+     * @param {string} mapId - ID карты
+     * @returns {Object|null} данные карты или null при ошибке
+     */
+    async getMapById(mapId) {
+      try {
+        const response = await fetch(`${API_URL}/maps/${mapId}`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${Cookies.get("access_token")}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(
+            `Ошибка при загрузке данных карты: ${response.status}`
+          );
+        }
+
+        return await response.json();
+      } catch (error) {
+        console.error(`Ошибка при получении данных карты ${mapId}:`, error);
+        return null;
       }
     },
 
@@ -233,8 +348,8 @@ export default {
       try {
         const mapId = this.$route.params.id;
 
-        // Получаем данные карты с сервера
-        const mapData = await this.getMapById(mapId);
+        // Получаем данные карты с сервера через импортированный сервис
+        const mapData = await getMapById(mapId);
 
         if (!mapData) {
           console.error("Не удалось загрузить данные карты");
@@ -257,19 +372,13 @@ export default {
         }
 
         // Загружаем категории (коллекции) и маркеры
-        const response = await fetch(`${API_URL}/collections?map_id=${mapId}`, {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${Cookies.get("access_token")}`,
-          },
-        });
+        const response = await api.get(`/collections/?map_id=${mapId}`);
 
-        if (!response.ok) {
-          throw new Error(`Ошибка при загрузке коллекций: ${response.status}`);
+        if (!response.data) {
+          throw new Error(`Ошибка при загрузке коллекций`);
         }
 
-        const collectionsData = await response.json();
+        const collectionsData = response.data;
 
         // Преобразуем коллекции в формат категорий для компонента
         this.categories = [];
@@ -278,25 +387,18 @@ export default {
         for (const collection of collectionsData) {
           try {
             // Загружаем маркеры для коллекции
-            const markersResponse = await fetch(
-              `${API_URL}/collections/${collection.collection_id}/markers`,
-              {
-                method: "GET",
-                headers: {
-                  "Content-Type": "application/json",
-                  Authorization: `Bearer ${Cookies.get("access_token")}`,
-                },
-              }
+            const markersResponse = await api.get(
+              `/collections/${collection.collection_id}/markers`
             );
 
-            if (!markersResponse.ok) {
+            if (!markersResponse.data) {
               console.error(
-                `Ошибка при загрузке маркеров для коллекции ${collection.collection_id}: ${markersResponse.status}`
+                `Ошибка при загрузке маркеров для коллекции ${collection.collection_id}`
               );
               continue;
             }
 
-            const markers = await markersResponse.json();
+            const markers = markersResponse.data;
 
             // Добавляем категорию с её маркерами
             this.categories.push({
@@ -318,10 +420,94 @@ export default {
           }
         }
 
+        // Если категорий нет, создаем категорию "Без категории"
+        if (this.categories.length === 0) {
+          await this.createDefaultCategory(mapId);
+        }
+
         // Отрисовываем маркеры на карте
         this.renderMarkers();
       } catch (error) {
         console.error("Ошибка при загрузке данных:", error);
+        // В случае ошибки все равно создаем категорию "Без категории"
+        await this.createDefaultCategory(this.$route.params.id);
+      }
+    },
+
+    /**
+     * Создание категории "Без категории" по умолчанию
+     * @param {string} mapId - ID карты
+     * @returns {Object} созданная категория
+     */
+    async createDefaultCategory(mapId) {
+      try {
+        // Проверяем, есть ли уже категория "Без категории"
+        const existingCategory = this.categories.find(
+          (category) =>
+            category.name === "Без категории" || category.name === "Default"
+        );
+
+        if (existingCategory) {
+          console.log(
+            'Категория "Без категории" уже существует с ID:',
+            existingCategory.id
+          );
+          return existingCategory; // Возвращаем существующую категорию
+        }
+
+        // Генерируем цвет
+        const defaultColor = "#8A2BE2"; // BlueViolet по умолчанию
+
+        // Пытаемся создать категорию на сервере
+        const response = await api.post("/collections/", {
+          title: "Без категории",
+          map_id: mapId,
+          is_public: false,
+          collection_color: defaultColor,
+        });
+
+        if (response.data) {
+          const newCollection = response.data;
+
+          // Добавляем категорию в список
+          const newCategory = {
+            id: newCollection.collection_id,
+            name: "Без категории",
+            color: defaultColor,
+            expanded: true,
+            visible: true,
+            markers: [],
+          };
+
+          this.categories.push(newCategory);
+          console.log(
+            'Создана категория "Без категории" с ID:',
+            newCategory.id
+          );
+          return newCategory;
+        } else {
+          throw new Error("Ошибка при создании категории на сервере");
+        }
+      } catch (error) {
+        console.error('Ошибка при создании категории "Без категории":', error);
+
+        // В случае ошибки создаем локальную категорию
+        const newCategoryId = "local_" + Date.now();
+        const localCategory = {
+          id: newCategoryId,
+          name: "Без категории",
+          color: "#8A2BE2",
+          expanded: true,
+          visible: true,
+          markers: [],
+        };
+
+        this.categories.push(localCategory);
+        console.warn(
+          'Создана локальная категория "Без категории" с ID:',
+          localCategory.id
+        );
+        return localCategory;
       }
     },
 
@@ -329,7 +515,7 @@ export default {
      * Загрузка и отображение фонового изображения карты
      * @param {string} imageUrl - URL изображения
      */
-    loadMapImage(imageUrl) {
+    async loadMapImage(imageUrl) {
       try {
         if (!this.map) {
           console.error("Карта не инициализирована");
@@ -343,7 +529,11 @@ export default {
 
         // Удаляем предыдущее изображение, если оно есть
         if (this.imageOverlay) {
-          this.map.removeLayer(this.imageOverlay);
+          try {
+            this.map.removeLayer(this.imageOverlay);
+          } catch (e) {
+            console.warn("Ошибка при удалении предыдущего изображения:", e);
+          }
         }
 
         // Проверяем, является ли URL относительным
@@ -364,6 +554,14 @@ export default {
           const img = new Image();
 
           img.onload = () => {
+            // Проверяем, что карта все еще существует
+            if (!this.map) {
+              console.error(
+                "Карта была уничтожена во время загрузки изображения"
+              );
+              return;
+            }
+
             console.log("Изображение успешно загружено", fullImageUrl);
             console.log("Размеры изображения:", img.width, "x", img.height);
 
@@ -386,13 +584,27 @@ export default {
 
             console.log("Границы изображения на карте:", this.imageBounds);
 
-            // Добавляем изображение на карту
-            this.imageOverlay = L.imageOverlay(fullImageUrl, this.imageBounds);
-            this.imageOverlay.addTo(this.map);
+            try {
+              // Закрываем все тултипы перед изменением вида карты
+              this.closeAllTooltips();
 
-            // Центрируем карту на изображении и приближаем для его полного отображения
-            this.map.fitBounds(this.imageBounds);
-            this.imageLoaded = true;
+              // Добавляем изображение на карту
+              this.imageOverlay = L.imageOverlay(
+                fullImageUrl,
+                this.imageBounds
+              );
+              this.imageOverlay.addTo(this.map);
+
+              // Центрируем карту на изображении и приближаем для его полного отображения
+              // Используем метод без анимации для предотвращения ошибок
+              this.map.fitBounds(this.imageBounds, { animate: false });
+              this.imageLoaded = true;
+            } catch (error) {
+              console.error(
+                "Ошибка при добавлении изображения на карту:",
+                error
+              );
+            }
           };
 
           // Добавляем обработчик ошибок
@@ -475,7 +687,15 @@ export default {
         // Удаляем все существующие маркеры
         Object.values(this.leafletMarkers).forEach((marker) => {
           if (marker) {
-            this.map.removeLayer(marker);
+            try {
+              if (marker.getTooltip && marker.getTooltip()) {
+                marker.closeTooltip();
+                marker.unbindTooltip();
+              }
+              this.map.removeLayer(marker);
+            } catch (e) {
+              console.warn("Ошибка при удалении маркера:", e);
+            }
           }
         });
 
@@ -488,40 +708,86 @@ export default {
           category.markers.forEach((marker) => {
             if (!marker.visible) return; // Пропускаем невидимые маркеры
 
-            // Получаем координаты маркера
-            const { latitude, longitude } = marker;
-            const [lat, lng] = this.transformCoordinates(longitude, latitude);
+            try {
+              // Получаем координаты маркера
+              const { latitude, longitude } = marker;
+              const [lat, lng] = this.transformCoordinates(longitude, latitude);
 
-            // Создаем иконку маркера
-            const icon = L.divIcon({
-              className: "custom-marker",
-              html: `<div class="marker-icon" style="background-color: ${category.color};"></div>`,
-              iconSize: [24, 24],
-              iconAnchor: [12, 12],
-            });
+              // Создаем SVG-маркер с подстановкой цвета категории
+              const markerSvg = `
+                <svg xmlns="http://www.w3.org/2000/svg" width="32" height="48" viewBox="0 0 32 48">
+                  <path fill="${category.color}" d="M16 0C7.2 0 0 7.2 0 16c0 8.8 16 32 16 32s16-23.2 16-32C32 7.2 24.8 0 16 0z"/>
+                  <circle fill="white" cx="16" cy="16" r="8"/>
+                </svg>
+              `;
 
-            // Создаем маркер Leaflet
-            const leafletMarker = L.marker([lat, lng], { icon });
+              // Создаем собственный класс иконки с отключенной анимацией
+              const customIcon = L.divIcon({
+                className: "custom-map-marker",
+                html: markerSvg,
+                iconSize: [32, 48],
+                iconAnchor: [16, 48],
+              });
 
-            // Добавляем тултип с названием
-            leafletMarker.bindTooltip(marker.title, {
-              permanent: false,
-              direction: "top",
-              offset: [0, -10],
-              opacity: 0.9,
-              className: "marker-tooltip",
-            });
+              // Создаем маркер Leaflet
+              const leafletMarker = L.marker([lat, lng], {
+                icon: customIcon,
+                interactive: true,
+                zIndexOffset: lat * 10,
+                riseOnHover: false,
+                riseOffset: 0,
+              });
 
-            // Добавляем обработчик клика
-            leafletMarker.on("click", () => {
-              this.openMarkerDetails(marker, category);
-            });
+              // Добавляем маркер на карту
+              leafletMarker.addTo(this.map);
 
-            // Добавляем маркер на карту
-            leafletMarker.addTo(this.map);
+              // Используем событие mouseover вместо tooltip для более стабильной работы
+              leafletMarker.on("mouseover", (e) => {
+                try {
+                  // Создаем попап вместо тултипа
+                  const popup = L.popup({
+                    className: "marker-tooltip",
+                    offset: [0, -48],
+                    closeButton: false,
+                    autoClose: true,
+                    closeOnEscapeKey: false,
+                    closeOnClick: false,
+                  })
+                    .setLatLng(e.target.getLatLng())
+                    .setContent(marker.title || marker.name)
+                    .openOn(this.map);
 
-            // Сохраняем ссылку на маркер
-            this.leafletMarkers[marker.id] = leafletMarker;
+                  // Сохраняем ссылку на попап
+                  leafletMarker.bindPopup(popup);
+                } catch (err) {
+                  console.warn("Ошибка при создании попапа:", err);
+                }
+              });
+
+              // Закрываем попап при уходе мыши
+              leafletMarker.on("mouseout", () => {
+                try {
+                  this.map.closePopup();
+                } catch (err) {
+                  console.warn("Ошибка при закрытии попапа:", err);
+                }
+              });
+
+              // Добавляем обработчик клика
+              leafletMarker.on("click", () => {
+                try {
+                  this.map.closePopup();
+                  this.openMarkerDetails(marker, category);
+                } catch (err) {
+                  console.warn("Ошибка при обработке клика на маркер:", err);
+                }
+              });
+
+              // Сохраняем ссылку на маркер
+              this.leafletMarkers[marker.id] = leafletMarker;
+            } catch (err) {
+              console.error("Ошибка при создании маркера:", err);
+            }
           });
         });
       } catch (error) {
@@ -533,12 +799,25 @@ export default {
      * Обработчик клика по карте для создания маркера
      * @param {Object} e - событие клика
      */
-    onMapClick(e) {
+    async onMapClick(e) {
+      console.log(
+        "Метод onMapClick() вызван - пользователь кликнул на карту в координатах:",
+        e.latlng
+      );
+
+      // Проверяем, что карта существует
+      if (!this.map) {
+        console.error("Карта не инициализирована в обработчике клика");
+        return;
+      }
+
       // Проверяем, находимся ли мы в режиме создания маркера
-      if (!this.showCreatePanel) return;
+      if (!this.showCreatePanel && !this.pendingMarkerCategory) return;
 
       // Если у нас нет выбранной категории, предлагаем выбрать
       if (!this.pendingMarkerCategory) {
+        console.log("Запрашиваем категорию для метки");
+
         // Показываем диалог выбора категории
         this.showCategoryDialog = true;
 
@@ -555,51 +834,62 @@ export default {
         return;
       }
 
+      console.log(
+        "Режим создания метки активен, категория:",
+        this.pendingMarkerCategory
+      );
+
       // Создаем маркер в выбранной категории
       const { lat, lng } = e.latlng;
       const [x, y] = this.reverseTransformCoordinates(lat, lng);
+      const category = this.categories.find(
+        (c) => c.id === this.pendingMarkerCategory
+      );
 
-      this.createMarkerInCategory(
-        y,
-        x,
-        this.pendingMarkerCategory,
-        "Новая метка"
-      )
-        .then(() => {
-          // Отключаем режим создания маркера
+      if (category) {
+        console.log("Найдена категория для метки:", category.name);
+        const mapId = this.$route.params.id;
+        const defaultName = "Метка " + (category.markers.length + 1);
+
+        console.log("Данные метки:", {
+          mapId: mapId,
+          position: [y, x],
+          name: defaultName,
+          categoryId: category.id,
+        });
+
+        try {
+          const newMarkerId = await this.createMarkerInCategory(
+            y,
+            x,
+            this.pendingMarkerCategory,
+            defaultName
+          );
+
+          console.log(`Маркер успешно создан с ID ${newMarkerId}`);
+
+          // Сбрасываем режим создания маркера
           this.showCreatePanel = false;
           this.pendingMarkerCategory = null;
 
+          // Возвращаем курсор в нормальное состояние
+          document.getElementById("map").classList.remove("adding-marker-mode");
+
+          // Удаляем обработчик правой кнопки мыши
+          document
+            .getElementById("map")
+            .removeEventListener("contextmenu", this.cancelMarkerCreation);
+
+          console.log("Режим создания метки деактивирован");
+
           // Перезагружаем данные карты
-          this.loadMapData();
-        })
-        .catch((error) => {
+          await this.loadMapData();
+        } catch (error) {
           console.error("Ошибка при создании маркера:", error);
-        });
-    },
-
-    /**
-     * Перемещение карты к выбранному маркеру
-     * @param {Object} marker - маркер
-     */
-    centerMapOnMarker(marker) {
-      try {
-        if (!this.map) return;
-
-        // Получаем координаты маркера
-        const { latitude, longitude } = marker;
-        const [lat, lng] = this.transformCoordinates(longitude, latitude);
-
-        // Центрируем карту на маркере
-        this.map.setView([lat, lng], 1);
-
-        // Открываем тултип маркера, если он есть
-        const leafletMarker = this.leafletMarkers[marker.id];
-        if (leafletMarker) {
-          leafletMarker.openTooltip();
+          alert("Не удалось создать маркер. Повторите попытку позже.");
         }
-      } catch (error) {
-        console.error("Ошибка при центрировании карты:", error);
+      } else {
+        console.error("Категория не найдена:", this.pendingMarkerCategory);
       }
     },
 
@@ -685,11 +975,14 @@ export default {
      */
     async createCategory() {
       try {
+        // Закрываем панель создания
+        this.showCreatePanel = false;
+
         const mapId = this.$route.params.id;
 
         // Запрашиваем у пользователя название категории
         const categoryName = prompt("Введите название категории:");
-        if (!categoryName) return;
+        if (!categoryName || !categoryName.trim()) return;
 
         // Генерируем случайный цвет
         const randomColor =
@@ -698,7 +991,7 @@ export default {
             .toString(16)
             .padStart(6, "0");
 
-        // Создаем коллекцию на сервере (коллекции используются как категории)
+        // Создаем коллекцию на сервере
         const response = await fetch(`${API_URL}/collections/`, {
           method: "POST",
           headers: {
@@ -706,7 +999,7 @@ export default {
             Authorization: `Bearer ${Cookies.get("access_token")}`,
           },
           body: JSON.stringify({
-            title: categoryName,
+            title: categoryName.trim(),
             map_id: mapId,
             is_public: false,
             collection_color: randomColor,
@@ -717,8 +1010,20 @@ export default {
           throw new Error(`Ошибка при создании коллекции: ${response.status}`);
         }
 
-        // Перезагружаем данные карты
-        await this.loadMapData();
+        // Получаем данные созданной коллекции
+        const newCollection = await response.json();
+
+        // Добавляем новую категорию в локальные данные
+        this.categories.push({
+          id: newCollection.collection_id,
+          name: categoryName.trim(),
+          color: randomColor,
+          expanded: true,
+          visible: true,
+          markers: [],
+        });
+
+        console.log(`Категория "${categoryName}" успешно создана`);
       } catch (error) {
         console.error("Ошибка при создании категории:", error);
       }
@@ -728,14 +1033,55 @@ export default {
      * Инициирование процесса создания маркера
      */
     createMarker() {
-      this.showCreatePanel = true;
+      console.log(
+        'Метод createMarker() вызван - пользователь нажал на опцию "Метка на карте"'
+      );
 
-      // Предупреждаем пользователя
-      alert("Нажмите на карту, чтобы создать маркер.");
+      // Закрываем панель создания
+      this.showCreatePanel = false;
+
+      // Если нет категорий, предлагаем создать категорию
+      if (this.categories.length === 0) {
+        alert("Сначала создайте категорию");
+        return;
+      }
+
+      // Если есть только одна категория, используем её
+      if (this.categories.length === 1) {
+        console.log(
+          "Доступна только одна категория, автоматически выбираем её:",
+          this.categories[0].name,
+          "(ID:",
+          this.categories[0].id,
+          ")"
+        );
+        this.pendingMarkerCategory = this.categories[0].id;
+        alert("Кликните на карту, чтобы создать маркер");
+
+        // Изменяем курсор для режима добавления метки
+        document.getElementById("map").classList.add("adding-marker-mode");
+        console.log(
+          "Режим создания метки активирован (курсор изменен на крестик)"
+        );
+
+        // Добавляем обработчик правой кнопки мыши для отмены
+        document
+          .getElementById("map")
+          .addEventListener("contextmenu", this.cancelMarkerCreation);
+        console.log(
+          "Добавлен обработчик правой кнопки мыши для отмены создания метки"
+        );
+
+        return;
+      }
+
+      // Отображаем диалог выбора категории
+      this.selectedCategoryId = this.categories[0].id;
+      this.showCategoryDialog = true;
     },
 
     /**
-     * Обработчик выбора категории в диалоге
+     * Обработчик выбора категории для маркера
      */
     onCategorySelected() {
       if (!this.selectedCategoryId) {
@@ -743,44 +1089,37 @@ export default {
         return;
       }
 
-      // Сохраняем выбранную категорию
+      const selectedCategory = this.categories.find(
+        (c) => c.id === this.selectedCategoryId
+      );
+
+      console.log(
+        "Пользователь выбрал категорию:",
+        selectedCategory ? selectedCategory.name : "неизвестная",
+        "(ID:",
+        this.selectedCategoryId,
+        ")"
+      );
+
+      // Сохраняем выбранную категорию и закрываем диалог
       this.pendingMarkerCategory = this.selectedCategoryId;
-
-      // Закрываем диалог
       this.showCategoryDialog = false;
 
-      // Используем сохраненные координаты для создания маркера
-      if (this.pendingMarkerCoordinates) {
-        const { latitude, longitude } = this.pendingMarkerCoordinates;
+      alert("Кликните на карту, чтобы создать маркер");
 
-        this.createMarkerInCategory(
-          latitude,
-          longitude,
-          this.pendingMarkerCategory,
-          "Новая метка"
-        )
-          .then(() => {
-            // Отключаем режим создания маркера
-            this.showCreatePanel = false;
-            this.pendingMarkerCategory = null;
-            this.pendingMarkerCoordinates = null;
+      // Изменяем курсор для режима добавления метки
+      document.getElementById("map").classList.add("adding-marker-mode");
+      console.log(
+        "Режим создания метки активирован (курсор изменен на крестик)"
+      );
 
-            // Перезагружаем данные карты
-            this.loadMapData();
-          })
-          .catch((error) => {
-            console.error("Ошибка при создании маркера:", error);
-          });
-      }
-    },
-
-    /**
-     * Закрытие диалога выбора категории
-     */
-    closeCategoryDialog() {
-      this.showCategoryDialog = false;
-      this.selectedCategoryId = null;
-      this.pendingMarkerCoordinates = null;
+      // Добавляем обработчик правой кнопки мыши для отмены
+      document
+        .getElementById("map")
+        .addEventListener("contextmenu", this.cancelMarkerCreation);
+      console.log(
+        "Добавлен обработчик правой кнопки мыши для отмены создания метки"
+      );
     },
 
     /**
@@ -788,43 +1127,56 @@ export default {
      * @param {Event} event - событие
      */
     cancelMarkerCreation(event) {
+      console.log(
+        "Метод cancelMarkerCreation() вызван - пользователь отменил создание метки правым кликом"
+      );
+
+      // Предотвращаем стандартное контекстное меню
       if (event) {
         event.preventDefault();
       }
 
-      this.showCreatePanel = false;
+      // Выходим из режима создания метки
       this.pendingMarkerCategory = null;
       this.pendingMarkerCoordinates = null;
+
+      // Возвращаем курсор в нормальное состояние
+      document.getElementById("map").classList.remove("adding-marker-mode");
+
+      // Удаляем обработчик правой кнопки мыши
+      document
+        .getElementById("map")
+        .removeEventListener("contextmenu", this.cancelMarkerCreation);
+
+      // Сообщаем пользователю
+      alert("Создание метки отменено");
+      console.log("Режим создания метки деактивирован");
     },
 
     // ====== Методы для работы с контекстным меню ======
 
     /**
      * Показывает контекстное меню для категории
-     * @param {Object} category - категория
-     * @param {Event} event - событие
+     * @param {Object} data - данные с категорией и позицией меню
      */
-    showCategoryMenu(category, event) {
-      // Предотвращаем всплытие события
-      if (event) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-
+    showCategoryMenuHandler(data) {
       // Сохраняем текущую категорию
-      this.currentCategory = category;
+      this.currentCategory = data.category;
+      this.selectedContextType = "category";
 
       // Устанавливаем позицию меню
-      this.menuPosition = {
-        x: event.clientX,
-        y: event.clientY,
-      };
+      this.menuPosition = data.position;
 
       // Определяем пункты меню
       this.contextMenuItems = [
-        { id: "rename", label: "Переименовать" },
-        { id: "color", label: "Изменить цвет" },
-        { id: "delete", label: "Удалить" },
+        { label: "Переименовать", action: "renameCategory", icon: "✏️" },
+        { label: "Изменить цвет", action: "changeColor", icon: "🎨" },
+        {
+          label: "Удалить",
+          action: "deleteCategory",
+          icon: "🗑️",
+          danger: true,
+        },
       ];
 
       // Показываем меню
@@ -833,66 +1185,31 @@ export default {
 
     /**
      * Показывает контекстное меню для маркера
-     * @param {Object} marker - маркер
-     * @param {Object} category - категория
-     * @param {Event} event - событие
+     * @param {Object} data - данные с маркером, категорией и позицией меню
      */
-    showMarkerMenu(marker, category, event) {
-      // Предотвращаем всплытие события
-      if (event) {
-        event.preventDefault();
-        event.stopPropagation();
-      }
-
+    showMarkerMenuHandler(data) {
       // Сохраняем текущий маркер и категорию
-      this.currentMarker = marker;
-      this.currentCategory = category;
+      this.currentMarker = data.marker;
+      this.currentCategory = data.category;
+      this.selectedContextType = "marker";
 
       // Устанавливаем позицию меню
-      this.menuPosition = {
-        x: event.clientX,
-        y: event.clientY,
-      };
+      this.menuPosition = data.position;
 
       // Определяем пункты меню
       this.contextMenuItems = [
-        { id: "edit", label: "Редактировать" },
-        { id: "center", label: "Центрировать" },
-        { id: "delete", label: "Удалить" },
+        { label: "Открыть", action: "openMarker", icon: "🔍" },
+        { label: "Редактировать", action: "editMarker", icon: "✏️" },
+        {
+          label: "Удалить",
+          action: "deleteMarker",
+          icon: "🗑️",
+          danger: true,
+        },
       ];
-
-      // Получаем другие категории для возможности перемещения
-      const otherCategories = this.categories.filter(
-        (cat) => cat.id !== category.id
-      );
-
-      if (otherCategories.length > 0) {
-        this.contextMenuItems.push({
-          id: "move",
-          label: "Переместить",
-          submenu: otherCategories.map((cat) => ({
-            id: `move-${cat.id}`,
-            label: cat.name,
-          })),
-        });
-      }
 
       // Показываем меню
       this.showContextMenu = true;
-    },
-
-    /**
-     * Обработчик клика вне контекстного меню
-     * @param {Event} event - событие
-     */
-    handleOutsideClick(event) {
-      // Закрываем контекстное меню при клике вне его
-      if (this.showContextMenu) {
-        const contextMenu = document.querySelector(".context-menu");
-        if (contextMenu && !contextMenu.contains(event.target)) {
-          this.showContextMenu = false;
-        }
-      }
     },
 
     /**
@@ -900,44 +1217,200 @@ export default {
      * @param {string} action - выбранное действие
      */
     handleMenuAction(action) {
-      // Закрываем меню
       this.showContextMenu = false;
 
       switch (action) {
-        // Действия с категориями
-        case "rename":
-          this.renameCategory(this.currentCategory);
-          break;
-        case "color":
-          this.changeColor(this.currentCategory);
-          break;
-        case "delete":
-          if (this.currentMarker) {
-            this.confirmDelete(this.currentMarker, "marker");
-          } else if (this.currentCategory) {
-            this.confirmDelete(this.currentCategory, "category");
-          }
-          break;
-
-        // Действия с маркерами
-        case "edit":
-          this.openMarkerDetails(this.currentMarker, this.currentCategory);
-          break;
-        case "center":
+        case "openMarker":
           this.centerMapOnMarker(this.currentMarker);
           break;
-        default:
-          // Проверяем, является ли действие перемещением маркера
-          if (action.startsWith("move-")) {
-            const targetCategoryId = action.substr(5);
-            this.moveMarkerToCategory(
-              this.currentMarker,
-              this.currentCategory.id,
-              targetCategoryId
-            );
-          }
+        case "editMarker":
+          this.showMarkerEditor = true;
+          break;
+        case "deleteMarker":
+          this.confirmDelete(this.currentMarker, "marker");
+          break;
+        case "renameCategory":
+          this.renameCategory(this.currentCategory);
+          break;
+        case "changeColor":
+          this.showColorEditor = true;
+          break;
+        case "deleteCategory":
+          this.confirmDelete(this.currentCategory, "category");
           break;
       }
+    },
+
+    /**
+     * Перемещение маркера между категориями
+     * @param {Object} marker - маркер
+     * @param {string} sourceCategoryId - ID исходной категории
+     * @param {string} targetCategoryId - ID целевой категории
+     */
+    async moveMarkerToCategory(marker, sourceCategoryId, targetCategoryId) {
+      // Проверяем наличие данных
+      if (!marker) {
+        console.error("Ошибка: маркер не определен");
+        return;
+      }
+
+      // Проверяем наличие ID маркера
+      const markerId = marker.id || marker.marker_id;
+      if (!markerId) {
+        console.error("Ошибка: ID маркера не определен", marker);
+        return;
+      }
+
+      // Проверяем равенство категорий
+      if (sourceCategoryId === targetCategoryId) {
+        console.log(
+          "Категории источника и назначения совпадают, операция отменена"
+        );
+        return;
+      }
+
+      try {
+        // Если метка локальная, не делаем запрос на сервер
+        if (markerId.toString().startsWith("local_")) {
+          console.warn("Локальная метка перемещена только в интерфейсе");
+
+          // Находим целевую категорию
+          const targetCategory = this.categories.find(
+            (c) => c.id === targetCategoryId
+          );
+          if (!targetCategory) return;
+
+          // Находим метку в исходной категории
+          const sourceCategory = this.categories.find(
+            (c) => c.id === sourceCategoryId
+          );
+          if (!sourceCategory) return;
+
+          const markerIndex = sourceCategory.markers.findIndex(
+            (m) => m.id === markerId || m.marker_id === markerId
+          );
+          if (markerIndex === -1) return;
+
+          // Копируем метку
+          const markerCopy = { ...sourceCategory.markers[markerIndex] };
+
+          // Удаляем из исходной категории
+          sourceCategory.markers.splice(markerIndex, 1);
+
+          // Добавляем в целевую категорию
+          targetCategory.markers.push(markerCopy);
+
+          // Перерисовываем маркеры
+          this.renderMarkers();
+          return;
+        }
+
+        // Используем сервисную функцию для перемещения маркера между коллекциями
+        await moveMarkerBetweenCollections(
+          sourceCategoryId,
+          markerId,
+          targetCategoryId
+        );
+
+        console.log(
+          `Маркер ${markerId} успешно перемещен из коллекции ${sourceCategoryId} в коллекцию ${targetCategoryId}`
+        );
+
+        // Находим целевую категорию
+        const targetCategory = this.categories.find(
+          (c) => c.id === targetCategoryId
+        );
+        if (!targetCategory) return;
+
+        // Находим метку в исходной категории
+        const sourceCategory = this.categories.find(
+          (c) => c.id === sourceCategoryId
+        );
+        if (!sourceCategory) return;
+
+        const markerIndex = sourceCategory.markers.findIndex(
+          (m) => m.id === markerId || m.marker_id === markerId
+        );
+        if (markerIndex === -1) return;
+
+        // Копируем метку
+        const markerCopy = { ...sourceCategory.markers[markerIndex] };
+
+        // Удаляем из исходной категории
+        sourceCategory.markers.splice(markerIndex, 1);
+
+        // Добавляем в целевую категорию
+        targetCategory.markers.push(markerCopy);
+
+        // Перерисовываем маркеры
+        this.renderMarkers();
+      } catch (error) {
+        console.error("Ошибка при перемещении маркера:", error);
+      }
+    },
+
+    /**
+     * Центрирование карты на маркере
+     * @param {Object} marker - маркер, на котором нужно центрировать карту
+     */
+    centerMapOnMarker(marker) {
+      if (!this.map) {
+        console.error("Карта не инициализирована");
+        return;
+      }
+
+      try {
+        // Закрываем все тултипы перед изменением вида карты
+        this.closeAllTooltips();
+
+        // Получаем координаты маркера
+        const { latitude, longitude } = marker;
+        const [lat, lng] = this.transformCoordinates(longitude, latitude);
+
+        // Центрируем карту на маркере
+        this.map.setView([lat, lng], this.map.getZoom());
+
+        // Открываем тултип маркера, если он есть
+        const leafletMarker = this.leafletMarkers[marker.id];
+        if (leafletMarker) {
+          if (leafletMarker.getPopup) {
+            leafletMarker.openPopup();
+          }
+        }
+
+        // Показываем уведомление пользователю
+        this.$notify?.info
+          ? this.$notify.info(
+              `Метка "${marker.name || marker.title}" найдена на карте`
+            )
+          : console.log(
+              `Метка "${marker.name || marker.title}" найдена на карте`
+            );
+      } catch (error) {
+        console.error("Ошибка при центрировании карты на маркере:", error);
+      }
+    },
+
+    /**
+     * Обработчик обновления цвета коллекции
+     * @param {Object} updateData - данные обновления
+     */
+    onCollectionColorUpdated(updateData) {
+      // Обновляем цвет коллекции в интерфейсе
+      const category = this.categories.find(
+        (c) =>
+          c.id === updateData.collectionId || c.id === updateData.categoryId
+      );
+
+      if (category) {
+        category.color = updateData.newColor;
+
+        // Если нужно обновить цвета маркеров
+        this.renderMarkers();
+      }
+
+      // Закрываем редактор цвета
+      this.showColorEditor = false;
     },
 
     // ====== Методы для изменения данных ======
@@ -949,96 +1422,96 @@ export default {
      */
     async saveMarkerChanges(updatedMarkerData) {
       try {
-        // Отправляем запрос на сервер для обновления маркера
-        const response = await fetch(
-          `${API_URL}/markers/${updatedMarkerData.id}`,
-          {
-            method: "PUT",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${Cookies.get("access_token")}`,
-            },
-            body: JSON.stringify(updatedMarkerData),
-          }
-        );
+        console.log("Сохранение изменений маркера:", updatedMarkerData);
 
-        if (!response.ok) {
-          throw new Error(`Ошибка при обновлении маркера: ${response.status}`);
+        // Проверяем наличие ID маркера и используем правильное свойство
+        const markerId = updatedMarkerData.marker_id || updatedMarkerData.id;
+
+        if (!markerId) {
+          console.error("Ошибка: ID маркера не определен", updatedMarkerData);
+          throw new Error("ID маркера не определен");
         }
 
-        const updatedMarker = await response.json();
-
-        // Обновляем локальные данные
-        const categoryIndex = this.categories.findIndex(
-          (c) => c.id === this.currentCategory.id
-        );
-
-        if (categoryIndex !== -1) {
-          const markerIndex = this.categories[categoryIndex].markers.findIndex(
-            (m) => m.id === updatedMarker.id
+        // Сохраняем Markdown контент, если он есть
+        if (updatedMarkerData.markdownContent !== undefined) {
+          console.log(
+            "Сохранение Markdown:",
+            updatedMarkerData.markdownContent
           );
 
-          if (markerIndex !== -1) {
-            // Обновляем данные маркера
-            this.categories[categoryIndex].markers[markerIndex] = {
-              ...updatedMarker,
-              visible: true, // Сохраняем видимость
-            };
+          try {
+            // Обновляем статью маркера
+            await api.put(`/markers/${markerId}/article`, {
+              markdown_content: updatedMarkerData.markdownContent,
+            });
 
-            // Обновляем маркер на карте
-            if (this.leafletMarkers[updatedMarker.id]) {
-              // Удаляем старый маркер
-              this.map.removeLayer(this.leafletMarkers[updatedMarker.id]);
-              delete this.leafletMarkers[updatedMarker.id];
-
-              // Создаем новый маркер с обновленными данными
-              const { latitude, longitude } = updatedMarker;
-              const [lat, lng] = this.transformCoordinates(longitude, latitude);
-
-              // Создаем иконку маркера
-              const icon = L.divIcon({
-                className: "custom-marker",
-                html: `<div class="marker-icon" style="background-color: ${this.categories[categoryIndex].color};"></div>`,
-                iconSize: [24, 24],
-                iconAnchor: [12, 12],
-              });
-
-              // Создаем маркер Leaflet
-              const leafletMarker = L.marker([lat, lng], { icon });
-
-              // Добавляем тултип с названием
-              leafletMarker.bindTooltip(updatedMarker.title, {
-                permanent: false,
-                direction: "top",
-                offset: [0, -10],
-                opacity: 0.9,
-                className: "marker-tooltip",
-              });
-
-              // Добавляем обработчик клика
-              leafletMarker.on("click", () => {
-                this.openMarkerDetails(
-                  updatedMarker,
-                  this.categories[categoryIndex]
-                );
-              });
-
-              // Добавляем маркер на карту
-              leafletMarker.addTo(this.map);
-
-              // Сохраняем ссылку на маркер
-              this.leafletMarkers[updatedMarker.id] = leafletMarker;
-            }
+            console.log("Статья для маркера успешно обновлена");
+          } catch (articleError) {
+            console.error(
+              "Ошибка при обновлении статьи маркера:",
+              articleError
+            );
           }
         }
 
-        // Закрываем редактор маркера
-        this.showMarkerEditor = false;
+        // Обновляем основные данные маркера
+        const markerData = {
+          latitude:
+            updatedMarkerData.latitude || updatedMarkerData.position?.[0],
+          longitude:
+            updatedMarkerData.longitude || updatedMarkerData.position?.[1],
+          title: updatedMarkerData.title || updatedMarkerData.name,
+          description: updatedMarkerData.description || "Описание метки",
+        };
 
-        return true;
+        const response = await api.put(`/markers/${markerId}`, markerData);
+
+        if (response.data) {
+          console.log("Маркер успешно обновлен:", response.data);
+
+          // Обновляем маркер в списке категорий
+          this.updateMarkerInCategories(markerId, updatedMarkerData);
+
+          // Обновляем отображение маркеров на карте
+          this.renderMarkers();
+
+          return true;
+        } else {
+          console.error("Ошибка при обновлении маркера");
+          return false;
+        }
       } catch (error) {
-        console.error("Ошибка при обновлении маркера:", error);
+        console.error("Ошибка при сохранении изменений маркера:", error);
         return false;
+      }
+    },
+
+    /**
+     * Обновить маркер в списке категорий
+     * @param {string} markerId - ID маркера
+     * @param {Object} updatedData - обновленные данные
+     */
+    updateMarkerInCategories(markerId, updatedData) {
+      // Ищем маркер в каждой категории
+      for (const category of this.categories) {
+        const markerIndex = category.markers.findIndex(
+          (m) => m.id === markerId || m.marker_id === markerId
+        );
+
+        if (markerIndex !== -1) {
+          // Обновляем данные маркера с сохранением ссылки на объект
+          const marker = category.markers[markerIndex];
+          if (updatedData.name) marker.name = updatedData.name;
+          if (updatedData.title) marker.title = updatedData.title;
+          if (updatedData.description)
+            marker.description = updatedData.description;
+          if (updatedData.markdownContent)
+            marker.markdownContent = updatedData.markdownContent;
+          if (updatedData.blocks) marker.blocks = updatedData.blocks;
+
+          console.log("Маркер обновлен в категории:", category.name);
+          break;
+        }
       }
     },
 
@@ -1092,230 +1565,6 @@ export default {
     },
 
     /**
-     * Обработчик обновления цвета коллекции
-     * @param {Object} updateData - данные обновления
-     */
-    onCollectionColorUpdated(updateData) {
-      if (!updateData || !updateData.categoryId || !updateData.newColor) {
-        return;
-      }
-
-      // Обновляем цвет коллекции на сервере
-      fetch(`${API_URL}/collections/${updateData.categoryId}`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${Cookies.get("access_token")}`,
-        },
-        body: JSON.stringify({
-          collection_color: updateData.newColor,
-        }),
-      })
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error(`Ошибка при обновлении цвета: ${response.status}`);
-          }
-          return response.json();
-        })
-        .then((updatedCollection) => {
-          // Обновляем цвет в локальных данных
-          const categoryIndex = this.categories.findIndex(
-            (c) => c.id === updatedCollection.collection_id
-          );
-
-          if (categoryIndex !== -1) {
-            // Используем collection_color из ответа API или сохраняем новый цвет напрямую
-            this.categories[categoryIndex].color =
-              updatedCollection.collection_color || updateData.newColor;
-
-            // Перерисовываем маркеры с новым цветом
-            this.renderMarkers();
-          }
-
-          // Закрываем редактор цвета
-          this.showColorEditor = false;
-        })
-        .catch((error) => {
-          console.error("Ошибка при обновлении цвета коллекции:", error);
-        });
-    },
-
-    // ====== Методы для работы с перетаскиванием ======
-
-    /**
-     * Начало перетаскивания маркера
-     * @param {Event} event - событие
-     * @param {Object} marker - маркер
-     * @param {Object} category - категория
-     */
-    onMarkerDragStart(event, marker, category) {
-      if (event) {
-        // Сохраняем данные маркера в dataTransfer
-        event.dataTransfer.setData(
-          "text/plain",
-          JSON.stringify({
-            type: "marker",
-            markerId: marker.id,
-            categoryId: category.id,
-          })
-        );
-
-        // Добавляем визуальный эффект
-        event.target.classList.add("dragging");
-      }
-    },
-
-    /**
-     * Конец перетаскивания маркера
-     */
-    onMarkerDragEnd() {
-      // Удаляем визуальный эффект со всех элементов
-      document.querySelectorAll(".dragging").forEach((el) => {
-        el.classList.remove("dragging");
-      });
-
-      // Сбрасываем состояния перетаскивания
-      this.dragEnterCategory = null;
-      this.dragEnterMarker = null;
-    },
-
-    /**
-     * Обработчик сброса маркера на другой маркер
-     * @param {Event} event - событие
-     * @param {Object} targetMarker - целевой маркер
-     * @param {Object} targetCategory - целевая категория
-     */
-    onMarkerDrop(event, targetMarker, targetCategory) {
-      if (event) {
-        event.preventDefault();
-
-        try {
-          // Получаем данные перетаскиваемого маркера
-          const data = JSON.parse(event.dataTransfer.getData("text/plain"));
-
-          if (data.type === "marker") {
-            // Если это не тот же самый маркер
-            if (data.markerId !== targetMarker.id) {
-              // Если это маркер из другой категории - перемещаем в новую категорию
-              if (data.categoryId !== targetCategory.id) {
-                this.moveMarkerToCategory(
-                  this.findMarkerById(data.markerId, data.categoryId),
-                  data.categoryId,
-                  targetCategory.id
-                );
-              }
-            }
-          }
-        } catch (error) {
-          console.error("Ошибка при обработке drop маркера:", error);
-        }
-      }
-    },
-
-    /**
-     * Обработчик сброса маркера на категорию
-     * @param {Event} event - событие
-     * @param {Object} targetCategory - целевая категория
-     */
-    onCategoryDrop(event, targetCategory) {
-      if (event) {
-        event.preventDefault();
-
-        try {
-          // Получаем данные перетаскиваемого объекта
-          const data = JSON.parse(event.dataTransfer.getData("text/plain"));
-
-          if (data.type === "marker") {
-            // Если это маркер из другой категории
-            if (data.categoryId !== targetCategory.id) {
-              this.moveMarkerToCategory(
-                this.findMarkerById(data.markerId, data.categoryId),
-                data.categoryId,
-                targetCategory.id
-              );
-            }
-          }
-        } catch (error) {
-          console.error("Ошибка при обработке drop на категорию:", error);
-        }
-      }
-    },
-
-    /**
-     * Перемещение маркера между категориями
-     * @param {Object} marker - маркер
-     * @param {string} sourceCategoryId - ID исходной категории
-     * @param {string} targetCategoryId - ID целевой категории
-     */
-    async moveMarkerToCategory(marker, sourceCategoryId, targetCategoryId) {
-      if (!marker || sourceCategoryId === targetCategoryId) {
-        return;
-      }
-
-      try {
-        // Отправляем запрос на сервер для обновления категории маркера
-        const response = await fetch(`${API_URL}/markers/${marker.id}`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${Cookies.get("access_token")}`,
-          },
-          body: JSON.stringify({
-            ...marker,
-            category_id: targetCategoryId,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error(`Ошибка при перемещении маркера: ${response.status}`);
-        }
-
-        // Обновляем локальные данные
-        const sourceCategory = this.categories.find(
-          (c) => c.id === sourceCategoryId
-        );
-        const targetCategory = this.categories.find(
-          (c) => c.id === targetCategoryId
-        );
-
-        if (sourceCategory && targetCategory) {
-          // Находим маркер в исходной категории
-          const markerIndex = sourceCategory.markers.findIndex(
-            (m) => m.id === marker.id
-          );
-
-          if (markerIndex !== -1) {
-            // Удаляем маркер из исходной категории
-            const [movedMarker] = sourceCategory.markers.splice(markerIndex, 1);
-
-            // Добавляем маркер в целевую категорию
-            targetCategory.markers.push(movedMarker);
-
-            // Перерисовываем маркеры на карте
-            this.renderMarkers();
-          }
-        }
-      } catch (error) {
-        console.error("Ошибка при перемещении маркера:", error);
-      }
-    },
-
-    /**
-     * Поиск маркера по ID
-     * @param {string} markerId - ID маркера
-     * @param {string} categoryId - ID категории
-     * @return {Object|null} - найденный маркер или null
-     */
-    findMarkerById(markerId, categoryId) {
-      const category = this.categories.find((c) => c.id === categoryId);
-      if (!category) return null;
-
-      return category.markers.find((m) => m.id === markerId) || null;
-    },
-
-    // ====== Методы для управления диалогами ======
-
-    /**
      * Переименование категории
      * @param {Object} category - категория
      */
@@ -1324,9 +1573,8 @@ export default {
         "Введите новое название категории:",
         category.name
       );
-
-      if (newName && newName !== category.name) {
-        // Обновляем коллекцию через API коллекций
+      if (newName && newName.trim()) {
+        // Обновляем коллекцию на сервере
         fetch(`${API_URL}/collections/${category.id}`, {
           method: "PUT",
           headers: {
@@ -1334,7 +1582,7 @@ export default {
             Authorization: `Bearer ${Cookies.get("access_token")}`,
           },
           body: JSON.stringify({
-            title: newName,
+            title: newName.trim(),
             collection_color: category.color,
           }),
         })
@@ -1347,23 +1595,13 @@ export default {
             return response.json();
           })
           .then(() => {
-            // Обновляем название категории в локальных данных
-            category.name = newName;
+            // Обновляем название в локальных данных
+            category.name = newName.trim();
           })
           .catch((error) => {
             console.error("Ошибка при переименовании коллекции:", error);
           });
       }
-    },
-
-    /**
-     * Изменение цвета категории
-     * @param {Object} category - категория
-     */
-    changeColor(category) {
-      // Показываем редактор цвета
-      this.currentCategory = category;
-      this.showColorEditor = true;
     },
 
     /**
@@ -1374,17 +1612,17 @@ export default {
     confirmDelete(item, type) {
       this.itemToDelete = item;
 
-      // Настраиваем сообщение в зависимости от типа элемента
       if (type === "marker") {
-        this.confirmationMessage = `Вы действительно хотите удалить метку "${item.title}"?`;
-        this.confirmationInput = "";
+        const markerName = item.title || item.name || "метка";
+        this.confirmationMessage = `Вы действительно хотите удалить метку "${markerName}"?`;
+        // Для маркеров не требуем подтверждения вводом названия
+        this.confirmationInput = markerName;
       } else if (type === "category") {
         this.confirmationMessage = `Вы действительно хотите удалить категорию "${item.name}" и все её метки?
         Это действие необратимо. Для подтверждения введите название категории.`;
         this.confirmationInput = "";
       }
 
-      // Показываем диалог подтверждения
       this.showDeleteConfirmation = true;
     },
 
@@ -1399,7 +1637,7 @@ export default {
     },
 
     /**
-     * Подтверждение удаления
+     * Подтверждение действия удаления
      */
     confirmDeleteAction() {
       const item = this.itemToDelete;
@@ -1409,62 +1647,79 @@ export default {
         return;
       }
 
-      // Проверяем тип элемента
-      if (item.title !== undefined) {
-        // Это маркер
+      if (item.title !== undefined || item.name !== undefined) {
+        // Это маркер - не проверяем ввод, просто удаляем
         const categoryId = this.currentCategory.id;
+        const markerId = item.id || item.marker_id;
 
-        // Удаляем маркер
-        fetch(`${API_URL}/markers/${item.id}`, {
-          method: "DELETE",
-          headers: {
-            Authorization: `Bearer ${Cookies.get("access_token")}`,
-          },
-        })
-          .then((response) => {
-            if (!response.ok) {
-              throw new Error(
-                `Ошибка при удалении маркера: ${response.status}`
+        if (!markerId) {
+          console.error("Ошибка: ID маркера не определен", item);
+          this.cancelDelete();
+          return;
+        }
+
+        // Удаляем маркер с сервера
+        this.deleteMarkerFromServer(markerId)
+          .then((success) => {
+            if (success) {
+              // Обновляем локальные данные
+              const categoryIndex = this.categories.findIndex(
+                (c) => c.id === categoryId
               );
-            }
+              if (categoryIndex !== -1) {
+                const markerIndex = this.categories[
+                  categoryIndex
+                ].markers.findIndex(
+                  (m) => m.id === markerId || m.marker_id === markerId
+                );
+                if (markerIndex !== -1) {
+                  this.categories[categoryIndex].markers.splice(markerIndex, 1);
 
-            // Обновляем локальные данные
-            const categoryIndex = this.categories.findIndex(
-              (c) => c.id === categoryId
-            );
+                  // Удаляем маркер с карты
+                  if (this.leafletMarkers[markerId]) {
+                    this.map.removeLayer(this.leafletMarkers[markerId]);
+                    delete this.leafletMarkers[markerId];
+                  }
+                }
+              }
+            } else {
+              console.warn(
+                "Не удалось удалить маркер на сервере, но удаляем из интерфейса"
+              );
+              // Всё равно удаляем маркер из интерфейса
+              const categoryIndex = this.categories.findIndex(
+                (c) => c.id === categoryId
+              );
+              if (categoryIndex !== -1) {
+                const markerIndex = this.categories[
+                  categoryIndex
+                ].markers.findIndex(
+                  (m) => m.id === markerId || m.marker_id === markerId
+                );
+                if (markerIndex !== -1) {
+                  this.categories[categoryIndex].markers.splice(markerIndex, 1);
 
-            if (categoryIndex !== -1) {
-              const markerIndex = this.categories[
-                categoryIndex
-              ].markers.findIndex((m) => m.id === item.id);
-
-              if (markerIndex !== -1) {
-                this.categories[categoryIndex].markers.splice(markerIndex, 1);
-
-                // Удаляем маркер с карты
-                if (this.leafletMarkers[item.id]) {
-                  this.map.removeLayer(this.leafletMarkers[item.id]);
-                  delete this.leafletMarkers[item.id];
+                  // Удаляем маркер с карты
+                  if (this.leafletMarkers[markerId]) {
+                    this.map.removeLayer(this.leafletMarkers[markerId]);
+                    delete this.leafletMarkers[markerId];
+                  }
                 }
               }
             }
           })
           .catch((error) => {
             console.error("Ошибка при удалении маркера:", error);
-          })
-          .finally(() => {
-            this.cancelDelete();
           });
       } else {
-        // Это категория
-        // Проверяем правильность ввода для подтверждения
+        // Это категория - проверяем соответствие ввода
         if (this.confirmationInput !== item.name) {
           alert("Название категории введено неверно. Удаление отменено.");
           this.cancelDelete();
           return;
         }
 
-        // Удаляем коллекцию через API коллекций
+        // Удаляем коллекцию с сервера
         fetch(`${API_URL}/collections/${item.id}`, {
           method: "DELETE",
           headers: {
@@ -1482,13 +1737,13 @@ export default {
             const categoryIndex = this.categories.findIndex(
               (c) => c.id === item.id
             );
-
             if (categoryIndex !== -1) {
               // Удаляем маркеры с карты
               this.categories[categoryIndex].markers.forEach((marker) => {
-                if (this.leafletMarkers[marker.id]) {
-                  this.map.removeLayer(this.leafletMarkers[marker.id]);
-                  delete this.leafletMarkers[marker.id];
+                const markerId = marker.id || marker.marker_id;
+                if (markerId && this.leafletMarkers[markerId]) {
+                  this.map.removeLayer(this.leafletMarkers[markerId]);
+                  delete this.leafletMarkers[markerId];
                 }
               });
 
@@ -1498,14 +1753,341 @@ export default {
           })
           .catch((error) => {
             console.error("Ошибка при удалении коллекции:", error);
-          })
-          .finally(() => {
-            this.cancelDelete();
           });
       }
+
+      this.cancelDelete();
+    },
+
+    /**
+     * Удаление маркера с сервера
+     */
+    async deleteMarkerFromServer(markerId) {
+      if (!markerId) {
+        console.error("Ошибка: ID маркера не определен");
+        return false;
+      }
+
+      try {
+        console.log(`Отправка запроса на удаление маркера с ID ${markerId}`);
+
+        // Удаляем маркер из коллекции с использованием api
+        await api.delete(`/markers/${markerId}`);
+
+        console.log(`Маркер ${markerId} успешно удален с сервера`);
+        return true;
+      } catch (error) {
+        console.error("Ошибка при удалении маркера:", error);
+
+        // Если ошибка связана с сетью или соединением, считаем что маркер удален из UI
+        if (
+          error.name === "TypeError" ||
+          error.message.includes("network") ||
+          error.message.includes("connection") ||
+          error.response?.status === 404 ||
+          error.response?.status === 500
+        ) {
+          console.warn(
+            "Сетевая ошибка или маркер не найден, удаляем из интерфейса"
+          );
+          return true;
+        }
+
+        return false;
+      }
+    },
+
+    /**
+     * Создание маркера в выбранной категории
+     * @param {number} latitude - широта
+     * @param {number} longitude - долгота
+     * @param {string} categoryId - ID категории
+     * @param {string} title - название маркера
+     */
+    async createMarkerInCategory(latitude, longitude, categoryId, title) {
+      try {
+        const mapId = this.$route.params.id;
+        console.log("Создание маркера с параметрами:", {
+          latitude,
+          longitude,
+          title,
+          mapId,
+          categoryId,
+        });
+
+        // Создаем маркер на сервере
+        const markerResponse = await api.post("/markers/", {
+          latitude,
+          longitude,
+          title,
+          description: "Описание метки",
+          map_id: mapId,
+        });
+
+        if (!markerResponse.data) {
+          throw new Error("Ошибка при создании маркера");
+        }
+
+        const newMarker = markerResponse.data;
+        const markerId = newMarker.marker_id || newMarker.id;
+
+        console.log("Маркер успешно создан на сервере с ID:", markerId);
+
+        if (!markerId) {
+          throw new Error("Не удалось получить ID созданного маркера");
+        }
+
+        // Добавляем маркер в коллекцию
+        console.log("Добавляем маркер в коллекцию", categoryId);
+        const addToCollectionResponse = await api.post(
+          `/collections/${categoryId}/markers`,
+          {
+            marker_id: markerId,
+          }
+        );
+
+        if (!addToCollectionResponse.data) {
+          console.warn(
+            `Не удалось добавить маркер ${markerId} в коллекцию ${categoryId}`
+          );
+        } else {
+          console.log("Маркер успешно добавлен в коллекцию");
+        }
+
+        // Создаем статью для маркера с базовым содержимым
+        console.log("Создаем статью для маркера");
+        const markdownContent = `# ${title}\nОписание метки`;
+        const articleResponse = await api.post(`/markers/${markerId}/article`, {
+          markdown_content: markdownContent,
+        });
+
+        if (!articleResponse.data) {
+          console.warn(`Не удалось создать статью для маркера ${markerId}`);
+        } else {
+          console.log("Статья для маркера успешно создана");
+        }
+
+        // Находим категорию и добавляем в неё маркер локально
+        const category = this.categories.find((c) => c.id === categoryId);
+        if (category) {
+          const markerItem = {
+            id: markerId,
+            marker_id: markerId, // Добавляем для совместимости
+            title: title,
+            name: title,
+            latitude,
+            longitude,
+            visible: true,
+            position: [latitude, longitude], // Совместимость с MapView.vue
+            blocks: [
+              { type: "heading1", content: title },
+              { type: "text", content: "Описание метки" },
+            ],
+            markdownContent: markdownContent,
+          };
+
+          category.markers.push(markerItem);
+
+          // Перерисовываем маркеры
+          this.renderMarkers();
+        }
+
+        return markerId;
+      } catch (error) {
+        console.error("Ошибка при создании маркера:", error);
+        throw error;
+      }
+    },
+
+    /**
+     * Начало перетаскивания маркера
+     */
+    onMarkerDragStartHandler() {
+      console.log("Начало перетаскивания маркера");
+      // Добавляем обработчики для окончания перетаскивания
+      document.addEventListener("dragend", this.onMarkerDragEnd);
+    },
+
+    /**
+     * Обработчик окончания перетаскивания маркера
+     */
+    onMarkerDragEnd() {
+      console.log("Завершение перетаскивания маркера");
+      // Удаляем стиль перетаскивания со всех элементов
+      document.querySelectorAll(".dragging").forEach((el) => {
+        el.classList.remove("dragging");
+      });
+
+      // Сбрасываем состояние перетаскивания
+      this.dragEnterCategory = null;
+      this.dragEnterMarker = null;
+
+      // Удаляем обработчики
+      document.removeEventListener("dragend", this.onMarkerDragEnd);
+    },
+
+    /**
+     * Обработчик для handleMarkerDrop
+     * @param {Object} data - данные о перетаскивании
+     */
+    handleMarkerDrop(data) {
+      try {
+        console.log("Обработка перетаскивания маркера", data);
+
+        // Извлекаем данные из события
+        const {
+          sourceMarkerId,
+          sourceCategoryId,
+          targetCategory,
+          targetMarker,
+        } = data;
+
+        // Проверяем корректность данных для перетаскивания
+        if (!sourceCategoryId || !targetCategory) {
+          console.error("Недостаточно данных для перетаскивания", data);
+          return;
+        }
+
+        // Найдем перетаскиваемый маркер
+        let marker = null;
+        let markerIndex = -1;
+        let sourceCategory = null;
+
+        // Находим исходную категорию и маркер в ней
+        for (let i = 0; i < this.categories.length; i++) {
+          if (this.categories[i].id === sourceCategoryId) {
+            sourceCategory = this.categories[i];
+            break;
+          }
+        }
+
+        if (!sourceCategory) {
+          console.error("Не найдена исходная категория", sourceCategoryId);
+          return;
+        }
+
+        // Если sourceMarkerId не определен, берем первый маркер из категории
+        // (это может произойти при перетаскивании категории на категорию)
+        if (
+          !sourceMarkerId &&
+          sourceCategory.markers &&
+          sourceCategory.markers.length > 0
+        ) {
+          markerIndex = 0;
+          marker = sourceCategory.markers[0];
+        } else if (sourceMarkerId) {
+          // Ищем маркер по ID
+          markerIndex = sourceCategory.markers.findIndex(
+            (m) => m.id === sourceMarkerId || m.marker_id === sourceMarkerId
+          );
+
+          if (markerIndex !== -1) {
+            marker = sourceCategory.markers[markerIndex];
+          }
+        }
+
+        // Проверяем, что маркер найден
+        if (!marker) {
+          console.error("Не найден маркер для перетаскивания", data);
+          return;
+        }
+
+        const markerId = marker.id || marker.marker_id;
+        if (!markerId) {
+          console.error("ID маркера не определен", marker);
+          return;
+        }
+
+        // Проверяем, не перетаскиваем ли в ту же категорию
+        if (sourceCategoryId === targetCategory.id && !targetMarker) {
+          console.log("Источник и цель совпадают, отменяем операцию");
+          return;
+        }
+
+        // Перемещаем маркер между категориями
+        this.moveMarkerToCategory(marker, sourceCategoryId, targetCategory.id)
+          .then(() => {
+            console.log(
+              `Маркер ${markerId} перемещен из ${sourceCategoryId} в ${targetCategory.id}`
+            );
+          })
+          .catch((error) => {
+            console.error("Ошибка при перемещении маркера:", error);
+          });
+      } catch (error) {
+        console.error("Ошибка в обработчике перетаскивания маркера:", error);
+      }
+    },
+
+    /**
+     * Обработчик для handleCategoryDrop
+     * @param {Object} data - данные о перетаскивании
+     */
+    handleCategoryDrop(data) {
+      try {
+        console.log("Обработка перетаскивания между категориями", data);
+
+        // Если есть targetMarker, значит перетаскиваем на маркер - такую операцию не поддерживаем
+        if (data.targetMarker) {
+          console.log("Перетаскивание на маркер не поддерживается");
+          return;
+        }
+
+        // Используем общий обработчик перетаскивания маркеров
+        this.handleMarkerDrop(data);
+      } catch (error) {
+        console.error("Ошибка в обработчике перетаскивания категории:", error);
+      }
+    },
+
+    /**
+     * Обработчик клика вне контекстного меню
+     * @param {Event} event - событие
+     */
+    handleOutsideClick(event) {
+      // Закрываем контекстное меню при клике вне его
+      if (this.showContextMenu) {
+        const contextMenu = document.querySelector(".context-menu");
+        if (contextMenu && !contextMenu.contains(event.target)) {
+          this.showContextMenu = false;
+        }
+      }
+    },
+
+    /**
+     * Закрытие диалога выбора категории
+     */
+    closeCategoryDialog() {
+      this.showCategoryDialog = false;
+      this.selectedCategoryId = null;
+      this.pendingMarkerCoordinates = null;
     },
   },
 };
 </script>
 
-<style scoped src="@/assets/css/views/MapView.css"></style> 
+<style scoped src="@/assets/css/views/MapView.css"></style>
+<style scoped>
+/* Стиль для курсора в режиме добавления маркера */
+#map.adding-marker-mode {
+  cursor: crosshair !important;
+}
+
+/* Стили для маркеров */
+.custom-map-marker {
+  background-color: transparent;
+  border: none;
+}
+
+/* Стили для тултипов */
+.marker-tooltip {
+  padding: 5px 10px;
+  background-color: rgba(255, 255, 255, 0.9);
+  border-radius: 4px;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  font-weight: bold;
+  font-size: 14px;
+  text-align: center;
+  border: 1px solid #ccc;
+}
+</style> 

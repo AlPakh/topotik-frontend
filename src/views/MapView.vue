@@ -3,94 +3,19 @@
     <AppHeader />
 
     <div class="map-container">
-      <div class="map-sidebar">
-        <div class="create-btn-container">
-          <button class="create-btn" @click="showCreatePanel = true">
-            Создать
-          </button>
-        </div>
-
-        <div class="sidebar-header">
-          <h3>{{ mapName }}</h3>
-        </div>
-
-        <div class="marker-categories">
-          <div
-            v-for="category in categories"
-            :key="category.id"
-            class="category"
-          >
-            <div class="category-header" :style="{ color: category.color }">
-              <span class="toggle-icon" @click="toggleCategory(category)">
-                <div
-                  class="arrow-icon"
-                  :class="{ 'arrow-down': category.expanded }"
-                >
-                  <img src="@/assets/svg/arrow.svg" alt="Arrow" />
-                </div>
-              </span>
-              <span class="category-name">{{ category.name }}</span>
-              <span
-                class="visibility-toggle"
-                @click="toggleCategoryVisibility(category)"
-              >
-                <span v-if="category.visible">👁️</span>
-                <span v-else>👁️‍🗨️</span>
-              </span>
-              <button
-                class="dots-button"
-                @click="showCategoryMenu(category, $event)"
-              >
-                ⋮
-              </button>
-            </div>
-
-            <div v-if="category.expanded" class="markers-list">
-              <div
-                v-for="marker in category.markers"
-                :key="marker.id"
-                class="marker-item"
-                :style="{ borderLeftColor: category.color }"
-                draggable="true"
-                @dragstart="onMarkerDragStart($event, marker, category)"
-                @dragover.prevent
-                @dragenter.prevent="dragEnterMarker = marker.id"
-                @dragleave="dragEnterMarker = null"
-                :class="{ 'drag-over': dragEnterMarker === marker.id }"
-                @drop="onMarkerDrop($event, marker, category)"
-              >
-                <span class="marker-name">{{ marker.name }}</span>
-                <span
-                  class="visibility-toggle"
-                  @click="toggleMarkerVisibility(marker)"
-                >
-                  <span v-if="marker.visible">👁️</span>
-                  <span v-else>👁️‍🗨️</span>
-                </span>
-                <button
-                  class="dots-button"
-                  @click="showMarkerMenu(marker, category, $event)"
-                >
-                  ⋮
-                </button>
-              </div>
-
-              <!-- Область для перетаскивания метки в пустую категорию -->
-              <div
-                v-if="category.markers.length === 0"
-                class="empty-category-drop"
-                @dragover.prevent
-                @dragenter.prevent="dragEnterCategory = category.id"
-                @dragleave="dragEnterCategory = null"
-                :class="{ 'drag-over': dragEnterCategory === category.id }"
-                @drop="onCategoryDrop($event, category)"
-              >
-                Перетащите сюда метку
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <MapSidebar
+        :categories="categories"
+        :mapName="mapName"
+        @show-create-panel="showCreatePanel = true"
+        @category-toggled="renderMarkers"
+        @category-visibility-changed="renderMarkers"
+        @marker-visibility-changed="renderMarkers"
+        @show-category-menu="showCategoryMenuHandler"
+        @show-marker-menu="showMarkerMenuHandler"
+        @marker-drop="handleMarkerDrop"
+        @category-drop="handleCategoryDrop"
+        @marker-drag-start="onMarkerDragStartHandler"
+      />
 
       <div class="map-view">
         <div id="map" class="map-container" ref="mapContainer"></div>
@@ -223,6 +148,7 @@ import { moveMarkerBetweenCollections } from "@/services/collections";
 import { getCollections } from "@/services/collections";
 import { removeMarkerFromCollection } from "@/services/collections";
 import { api } from "@/api";
+import MapSidebar from "@/components/MapSidebar.vue";
 
 // Определение URL API сервера из переменных окружения
 const API_URL = process.env.VUE_APP_API_URL || "http://localhost:8000";
@@ -235,6 +161,7 @@ export default {
     AppHeader,
     ContextMenu,
     EditCollectionColor,
+    MapSidebar,
   },
   data() {
     return {
@@ -894,19 +821,13 @@ export default {
       this.renderMarkers();
     },
 
-    showCategoryMenu(category, event) {
-      // Предотвращаем всплытие события
-      event.stopPropagation();
-
-      // Сохраняем категорию и тип контекста
-      this.currentCategory = category;
+    showCategoryMenuHandler(data) {
+      // data уже содержит category и position
+      this.currentCategory = data.category;
       this.selectedContextType = "category";
 
-      // Устанавливаем позицию меню относительно курсора
-      this.menuPosition = {
-        x: event.clientX,
-        y: event.clientY,
-      };
+      // Устанавливаем позицию меню
+      this.menuPosition = data.position;
 
       // Определяем пункты контекстного меню
       this.contextMenuItems = [
@@ -924,20 +845,14 @@ export default {
       this.showContextMenu = true;
     },
 
-    showMarkerMenu(marker, category, event) {
-      // Предотвращаем всплытие события
-      event.stopPropagation();
-
-      // Сохраняем маркер, категорию и тип контекста
-      this.currentMarker = marker;
-      this.currentCategory = category;
+    showMarkerMenuHandler(data) {
+      // data уже содержит marker, category и position
+      this.currentMarker = data.marker;
+      this.currentCategory = data.category;
       this.selectedContextType = "marker";
 
-      // Устанавливаем позицию меню относительно курсора
-      this.menuPosition = {
-        x: event.clientX,
-        y: event.clientY,
-      };
+      // Устанавливаем позицию меню
+      this.menuPosition = data.position;
 
       // Определяем пункты контекстного меню
       this.contextMenuItems = [
@@ -2609,22 +2524,7 @@ export default {
     },
 
     // Drag and Drop меток
-    onMarkerDragStart(event, marker, category) {
-      // Сохраняем информацию о перетаскиваемой метке
-      event.dataTransfer.setData(
-        "text/plain",
-        JSON.stringify({
-          markerId: marker.id,
-          categoryId: category.id,
-        })
-      );
-      event.dataTransfer.effectAllowed = "move";
-
-      // Изменяем стиль элемента при перетаскивании
-      if (event.target.classList.contains("marker-item")) {
-        event.target.classList.add("dragging");
-      }
-
+    onMarkerDragStartHandler() {
       // Добавляем обработчики событий для всего документа
       document.addEventListener("dragend", this.onMarkerDragEnd);
     },
@@ -2644,100 +2544,86 @@ export default {
       document.removeEventListener("dragend", this.onMarkerDragEnd);
     },
 
-    onMarkerDrop(event, targetMarker, targetCategory) {
-      // Сбрасываем состояние перетаскивания
-      this.dragEnterMarker = null;
+    handleMarkerDrop(data) {
+      const { sourceMarkerId, sourceCategoryId, targetCategory } = data;
 
-      try {
-        // Получаем данные о перетаскиваемой метке
-        const data = JSON.parse(event.dataTransfer.getData("text/plain"));
-        const { markerId, categoryId } = data;
-
-        // Если метка перетаскивается в ту же категорию, ничего не делаем
-        if (categoryId === targetCategory.id) {
-          return;
-        }
-
-        // Находим исходную категорию и метку
-        const sourceCategory = this.categories.find((c) => c.id === categoryId);
-        if (!sourceCategory) {
-          console.error("Не найдена исходная категория:", categoryId);
-          return;
-        }
-
-        const markerIndex = sourceCategory.markers.findIndex(
-          (m) => m.id === markerId
-        );
-        if (markerIndex === -1) {
-          console.error("Не найдена метка:", markerId);
-          return;
-        }
-
-        // Копируем метку для перемещения
-        const marker = { ...sourceCategory.markers[markerIndex] };
-
-        // Удаляем метку из исходной категории
-        sourceCategory.markers.splice(markerIndex, 1);
-
-        // Добавляем метку в целевую категорию
-        targetCategory.markers.push(marker);
-
-        // Сохраняем изменения на сервере
-        this.moveMarkerToCategory(marker, sourceCategory.id, targetCategory.id);
-
-        // Обновляем отображение
-        this.renderMarkers();
-      } catch (error) {
-        console.error("Ошибка при перетаскивании метки:", error);
+      // Если метка перетаскивается в ту же категорию, ничего не делаем
+      if (sourceCategoryId === targetCategory.id) {
+        return;
       }
+
+      // Находим исходную категорию и метку
+      const sourceCategory = this.categories.find(
+        (c) => c.id === sourceCategoryId
+      );
+      if (!sourceCategory) {
+        console.error("Не найдена исходная категория:", sourceCategoryId);
+        return;
+      }
+
+      const markerIndex = sourceCategory.markers.findIndex(
+        (m) => m.id === sourceMarkerId
+      );
+      if (markerIndex === -1) {
+        console.error("Не найдена метка:", sourceMarkerId);
+        return;
+      }
+
+      // Копируем метку для перемещения
+      const marker = { ...sourceCategory.markers[markerIndex] };
+
+      // Удаляем метку из исходной категории
+      sourceCategory.markers.splice(markerIndex, 1);
+
+      // Добавляем метку в целевую категорию
+      targetCategory.markers.push(marker);
+
+      // Сохраняем изменения на сервере
+      this.moveMarkerToCategory(marker, sourceCategory.id, targetCategory.id);
+
+      // Обновляем отображение
+      this.renderMarkers();
     },
 
-    onCategoryDrop(event, targetCategory) {
-      // Сбрасываем состояние перетаскивания
-      this.dragEnterCategory = null;
+    handleCategoryDrop(data) {
+      const { sourceMarkerId, sourceCategoryId, targetCategory } = data;
 
-      try {
-        // Получаем данные о перетаскиваемой метке
-        const data = JSON.parse(event.dataTransfer.getData("text/plain"));
-        const { markerId, categoryId } = data;
-
-        // Если метка перетаскивается в ту же категорию, ничего не делаем
-        if (categoryId === targetCategory.id) {
-          return;
-        }
-
-        // Находим исходную категорию и метку
-        const sourceCategory = this.categories.find((c) => c.id === categoryId);
-        if (!sourceCategory) {
-          console.error("Не найдена исходная категория:", categoryId);
-          return;
-        }
-
-        const markerIndex = sourceCategory.markers.findIndex(
-          (m) => m.id === markerId
-        );
-        if (markerIndex === -1) {
-          console.error("Не найдена метка:", markerId);
-          return;
-        }
-
-        // Копируем метку для перемещения
-        const marker = { ...sourceCategory.markers[markerIndex] };
-
-        // Удаляем метку из исходной категории
-        sourceCategory.markers.splice(markerIndex, 1);
-
-        // Добавляем метку в целевую категорию
-        targetCategory.markers.push(marker);
-
-        // Сохраняем изменения на сервере
-        this.moveMarkerToCategory(marker, sourceCategory.id, targetCategory.id);
-
-        // Обновляем отображение
-        this.renderMarkers();
-      } catch (error) {
-        console.error("Ошибка при перетаскивании метки в категорию:", error);
+      // Если метка перетаскивается в ту же категорию, ничего не делаем
+      if (sourceCategoryId === targetCategory.id) {
+        return;
       }
+
+      // Находим исходную категорию и метку
+      const sourceCategory = this.categories.find(
+        (c) => c.id === sourceCategoryId
+      );
+      if (!sourceCategory) {
+        console.error("Не найдена исходная категория:", sourceCategoryId);
+        return;
+      }
+
+      const markerIndex = sourceCategory.markers.findIndex(
+        (m) => m.id === sourceMarkerId
+      );
+      if (markerIndex === -1) {
+        console.error("Не найдена метка:", sourceMarkerId);
+        return;
+      }
+
+      // Копируем метку для перемещения
+      const marker = { ...sourceCategory.markers[markerIndex] };
+
+      // Удаляем метку из исходной категории
+      sourceCategory.markers.splice(markerIndex, 1);
+
+      // Добавляем метку в целевую категорию
+      targetCategory.markers.push(marker);
+
+      // Сохраняем изменения на сервере
+      this.moveMarkerToCategory(marker, sourceCategory.id, targetCategory.id);
+
+      // Обновляем отображение
+      this.renderMarkers();
     },
 
     // Перемещение метки между категориями на сервере
