@@ -256,8 +256,8 @@ export default {
           console.warn("У карты нет фонового изображения");
         }
 
-        // Загружаем категории и маркеры
-        const response = await fetch(`${API_URL}/maps/${mapId}/categories`, {
+        // Загружаем категории (коллекции) и маркеры
+        const response = await fetch(`${API_URL}/collections?map_id=${mapId}`, {
           method: "GET",
           headers: {
             "Content-Type": "application/json",
@@ -266,21 +266,57 @@ export default {
         });
 
         if (!response.ok) {
-          throw new Error(`Ошибка при загрузке категорий: ${response.status}`);
+          throw new Error(`Ошибка при загрузке коллекций: ${response.status}`);
         }
 
-        const categoriesData = await response.json();
+        const collectionsData = await response.json();
 
-        // Настраиваем категории для отображения
-        this.categories = categoriesData.map((category) => ({
-          ...category,
-          expanded: true, // По умолчанию раскрыты
-          visible: true, // По умолчанию видимы
-          markers: category.markers.map((marker) => ({
-            ...marker,
-            visible: true, // По умолчанию видимы
-          })),
-        }));
+        // Преобразуем коллекции в формат категорий для компонента
+        this.categories = [];
+
+        // Для каждой коллекции загружаем маркеры
+        for (const collection of collectionsData) {
+          try {
+            // Загружаем маркеры для коллекции
+            const markersResponse = await fetch(
+              `${API_URL}/collections/${collection.collection_id}/markers`,
+              {
+                method: "GET",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${Cookies.get("access_token")}`,
+                },
+              }
+            );
+
+            if (!markersResponse.ok) {
+              console.error(
+                `Ошибка при загрузке маркеров для коллекции ${collection.collection_id}: ${markersResponse.status}`
+              );
+              continue;
+            }
+
+            const markers = await markersResponse.json();
+
+            // Добавляем категорию с её маркерами
+            this.categories.push({
+              id: collection.collection_id,
+              name: collection.title,
+              color: collection.collection_color || "#8A2BE2", // Используем цвет коллекции или фиолетовый по умолчанию
+              expanded: true, // По умолчанию раскрыта
+              visible: true, // По умолчанию видима
+              markers: markers.map((marker) => ({
+                ...marker,
+                visible: true, // По умолчанию видимы
+              })),
+            });
+          } catch (error) {
+            console.error(
+              `Ошибка при загрузке маркеров для коллекции ${collection.collection_id}:`,
+              error
+            );
+          }
+        }
 
         // Отрисовываем маркеры на карте
         this.renderMarkers();
@@ -297,6 +333,11 @@ export default {
       try {
         if (!this.map) {
           console.error("Карта не инициализирована");
+          this.$notify({
+            type: "error",
+            title: "Ошибка",
+            text: "Не удалось загрузить карту. Повторите попытку позже.",
+          });
           return;
         }
 
@@ -305,33 +346,94 @@ export default {
           this.map.removeLayer(this.imageOverlay);
         }
 
-        // Создаем новое изображение
-        const img = new Image();
-        img.onload = () => {
-          // Определяем размеры и границы изображения
-          // Размеры не используются, так как мы всегда используем фиксированное виртуальное пространство 1000x1000
-          // const imgWidth = img.width;
-          // const imgHeight = img.height;
+        // Проверяем, является ли URL относительным
+        // Если да, добавляем к нему базовый URL API
+        const fullImageUrl = imageUrl.startsWith("/")
+          ? `${API_URL}${imageUrl}`
+          : imageUrl;
 
-          // Создаем границы изображения в координатах карты
-          this.imageBounds = [
-            [0, 0],
-            [1000, 1000],
-          ];
+        console.log("Загрузка изображения с URL:", fullImageUrl);
 
-          // Добавляем изображение на карту
-          this.imageOverlay = L.imageOverlay(imageUrl, this.imageBounds);
-          this.imageOverlay.addTo(this.map);
+        // Счетчик для повторных попыток
+        let retryCount = 0;
+        const maxRetries = 3;
 
-          // Центрируем карту на изображении и приближаем для его полного отображения
-          this.map.fitBounds(this.imageBounds);
-          this.imageLoaded = true;
+        // Функция для загрузки изображения с повторными попытками
+        const loadImageWithRetry = () => {
+          // Создаем новое изображение
+          const img = new Image();
+
+          img.onload = () => {
+            console.log("Изображение успешно загружено", fullImageUrl);
+            console.log("Размеры изображения:", img.width, "x", img.height);
+
+            // Вычисляем соотношение сторон изображения
+            const aspectRatio = img.width / img.height;
+            console.log("Соотношение сторон изображения:", aspectRatio);
+
+            // Создаем границы с учетом соотношения сторон
+            // Базовая высота всегда 1000, ширина зависит от соотношения сторон
+            const height = 1000;
+            const width = height * aspectRatio;
+
+            // Создаем границы изображения в координатах карты
+            // Центрируем изображение по горизонтали, если его ширина не равна 1000
+            const offsetX = (width - 1000) / 2;
+            this.imageBounds = [
+              [0, 0 - offsetX], // верхний левый угол [y, x]
+              [height, width - offsetX], // нижний правый угол [y, x]
+            ];
+
+            console.log("Границы изображения на карте:", this.imageBounds);
+
+            // Добавляем изображение на карту
+            this.imageOverlay = L.imageOverlay(fullImageUrl, this.imageBounds);
+            this.imageOverlay.addTo(this.map);
+
+            // Центрируем карту на изображении и приближаем для его полного отображения
+            this.map.fitBounds(this.imageBounds);
+            this.imageLoaded = true;
+          };
+
+          // Добавляем обработчик ошибок
+          img.onerror = (error) => {
+            console.error("Ошибка при загрузке изображения:", error);
+            console.log("URL изображения:", fullImageUrl);
+
+            // Пробуем загрузить снова, если не превышено максимальное количество попыток
+            if (retryCount < maxRetries) {
+              retryCount++;
+              console.log(
+                `Повторная попытка загрузки (${retryCount}/${maxRetries})...`
+              );
+              setTimeout(loadImageWithRetry, 1000); // Пауза перед повторной попыткой
+            } else {
+              console.error(
+                `Не удалось загрузить изображение после ${maxRetries} попыток.`
+              );
+              this.$notify({
+                type: "error",
+                title: "Ошибка загрузки изображения",
+                text: "Не удалось загрузить фоновое изображение карты. Проверьте соединение с сервером.",
+              });
+            }
+          };
+
+          // Загружаем изображение
+          img.src = fullImageUrl;
         };
 
-        // Загружаем изображение
-        img.src = imageUrl;
+        // Запускаем загрузку изображения
+        loadImageWithRetry();
       } catch (error) {
         console.error("Ошибка при загрузке изображения:", error);
+        this.$notify({
+          type: "error",
+          title: "Ошибка",
+          text:
+            "Не удалось загрузить изображение: " +
+            (error.message || "неизвестная ошибка"),
+        });
       }
     },
 
@@ -589,25 +691,30 @@ export default {
         const categoryName = prompt("Введите название категории:");
         if (!categoryName) return;
 
-        // Создаем категорию на сервере
-        const response = await fetch(`${API_URL}/maps/${mapId}/categories`, {
+        // Генерируем случайный цвет
+        const randomColor =
+          "#" +
+          Math.floor(Math.random() * 16777215)
+            .toString(16)
+            .padStart(6, "0");
+
+        // Создаем коллекцию на сервере (коллекции используются как категории)
+        const response = await fetch(`${API_URL}/collections/`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${Cookies.get("access_token")}`,
           },
           body: JSON.stringify({
-            name: categoryName,
-            color:
-              "#" +
-              Math.floor(Math.random() * 16777215)
-                .toString(16)
-                .padStart(6, "0"), // Случайный цвет
+            title: categoryName,
+            map_id: mapId,
+            is_public: false,
+            collection_color: randomColor,
           }),
         });
 
         if (!response.ok) {
-          throw new Error(`Ошибка при создании категории: ${response.status}`);
+          throw new Error(`Ошибка при создании коллекции: ${response.status}`);
         }
 
         // Перезагружаем данные карты
@@ -993,17 +1100,15 @@ export default {
         return;
       }
 
-      const mapId = this.$route.params.id;
-
-      // Обновляем цвет категории на сервере
-      fetch(`${API_URL}/maps/${mapId}/categories/${updateData.categoryId}`, {
+      // Обновляем цвет коллекции на сервере
+      fetch(`${API_URL}/collections/${updateData.categoryId}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${Cookies.get("access_token")}`,
         },
         body: JSON.stringify({
-          color: updateData.newColor,
+          collection_color: updateData.newColor,
         }),
       })
         .then((response) => {
@@ -1012,14 +1117,16 @@ export default {
           }
           return response.json();
         })
-        .then((updatedCategory) => {
+        .then((updatedCollection) => {
           // Обновляем цвет в локальных данных
           const categoryIndex = this.categories.findIndex(
-            (c) => c.id === updatedCategory.id
+            (c) => c.id === updatedCollection.collection_id
           );
 
           if (categoryIndex !== -1) {
-            this.categories[categoryIndex].color = updatedCategory.color;
+            // Используем collection_color из ответа API или сохраняем новый цвет напрямую
+            this.categories[categoryIndex].color =
+              updatedCollection.collection_color || updateData.newColor;
 
             // Перерисовываем маркеры с новым цветом
             this.renderMarkers();
@@ -1029,7 +1136,7 @@ export default {
           this.showColorEditor = false;
         })
         .catch((error) => {
-          console.error("Ошибка при обновлении цвета категории:", error);
+          console.error("Ошибка при обновлении цвета коллекции:", error);
         });
     },
 
@@ -1219,23 +1326,22 @@ export default {
       );
 
       if (newName && newName !== category.name) {
-        const mapId = this.$route.params.id;
-
-        fetch(`${API_URL}/maps/${mapId}/categories/${category.id}`, {
+        // Обновляем коллекцию через API коллекций
+        fetch(`${API_URL}/collections/${category.id}`, {
           method: "PUT",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${Cookies.get("access_token")}`,
           },
           body: JSON.stringify({
-            name: newName,
-            color: category.color,
+            title: newName,
+            collection_color: category.color,
           }),
         })
           .then((response) => {
             if (!response.ok) {
               throw new Error(
-                `Ошибка при обновлении категории: ${response.status}`
+                `Ошибка при обновлении коллекции: ${response.status}`
               );
             }
             return response.json();
@@ -1245,7 +1351,7 @@ export default {
             category.name = newName;
           })
           .catch((error) => {
-            console.error("Ошибка при переименовании категории:", error);
+            console.error("Ошибка при переименовании коллекции:", error);
           });
       }
     },
@@ -1303,8 +1409,6 @@ export default {
         return;
       }
 
-      const mapId = this.$route.params.id;
-
       // Проверяем тип элемента
       if (item.title !== undefined) {
         // Это маркер
@@ -1360,8 +1464,8 @@ export default {
           return;
         }
 
-        // Удаляем категорию
-        fetch(`${API_URL}/maps/${mapId}/categories/${item.id}`, {
+        // Удаляем коллекцию через API коллекций
+        fetch(`${API_URL}/collections/${item.id}`, {
           method: "DELETE",
           headers: {
             Authorization: `Bearer ${Cookies.get("access_token")}`,
@@ -1370,7 +1474,7 @@ export default {
           .then((response) => {
             if (!response.ok) {
               throw new Error(
-                `Ошибка при удалении категории: ${response.status}`
+                `Ошибка при удалении коллекции: ${response.status}`
               );
             }
 
@@ -1393,7 +1497,7 @@ export default {
             }
           })
           .catch((error) => {
-            console.error("Ошибка при удалении категории:", error);
+            console.error("Ошибка при удалении коллекции:", error);
           })
           .finally(() => {
             this.cancelDelete();

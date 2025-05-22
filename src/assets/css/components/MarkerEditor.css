@@ -68,7 +68,7 @@
 
 .category-badge {
     padding: 4px 8px;
-    border-radius: 4px;
+    border-radius: 50px;
     color: white;
     font-size: 12px;
 }
@@ -79,6 +79,7 @@
     font-size: 24px;
     cursor: pointer;
     color: #666;
+    padding: 0 1.5rem;
 }
 
 .editor-content {

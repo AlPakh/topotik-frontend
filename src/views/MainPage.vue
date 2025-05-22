@@ -51,7 +51,7 @@
             <map-preview
               :map="selectedItem"
               @upload-image="handleImageUpload"
-              @openMap="navigateToMap"
+              @openMap="handleOpenMap"
             />
           </div>
 
@@ -349,26 +349,69 @@ export default {
       return null;
     },
 
-    handleSelectItem(item) {
-      // Для всех типов элементов просто выбираем их для отображения
-      this.selectedItem = item;
+    // Обработчик выбора элемента (папки или карты)
+    async handleSelectItem(item) {
+      try {
+        this.loading = true;
+        this.error = null;
 
-      // Если выбрана папка, сохраняем ее в cookie
-      if (item.type === "folder" && item.id !== "root") {
-        saveLastOpenedFolder({
-          id: item.id,
-          name: item.name,
-          type: "folder",
-        });
+        // Если выбрана папка (folder), загружаем её содержимое
+        if (item.type === "folder") {
+          console.log("Выбрана папка:", item.name);
+          this.selectedItem = item;
+          this.currentFolderId = item.id;
 
-        // Раскрываем путь к папке в левой панели
-        this.$nextTick(() => {
-          this.$refs.leftSidebar.expandPathToFolder(item.id);
-        });
+          // Сохраняем папку в cookie (если это не корневая папка)
+          if (item.id !== "root") {
+            saveLastOpenedFolder({
+              id: item.id,
+              name: item.name,
+              type: "folder",
+            });
+
+            // Раскрываем путь к папке в левой панели
+            this.$nextTick(() => {
+              if (this.$refs.leftSidebar) {
+                this.$refs.leftSidebar.expandPathToFolder(item.id);
+              }
+            });
+          }
+        }
+        // Если выбрана карта, обрабатываем её
+        else if (item.type === "map") {
+          console.log("Выбрана карта:", item.name || item.title);
+
+          // Загружаем полные данные карты, чтобы получить информацию о фоновом изображении
+          try {
+            const mapData = await getMapById(item.id);
+            console.log("Загружены полные данные карты:", mapData);
+
+            // Объединяем данные карты с уже существующими (чтобы сохранить поля из структуры папок)
+            this.selectedItem = {
+              ...item,
+              ...mapData,
+              id: item.id, // Сохраняем оригинальный ID из структуры папок
+              type: "map", // Убеждаемся, что тип остается 'map'
+            };
+
+            console.log("Данные для отображения карты:", this.selectedItem);
+          } catch (error) {
+            console.error("Ошибка при загрузке полных данных карты:", error);
+            // Если не удалось загрузить полные данные, используем то, что есть
+            this.selectedItem = item;
+          }
+        }
+
+        // Закрываем панель создания, если она была открыта
+        this.showCreatePanel = false;
+
+        this.loading = false;
+        this.error = null;
+      } catch (error) {
+        console.error("Ошибка при выборе элемента:", error);
+        this.loading = false;
+        this.error = "Ошибка при загрузке элемента. Попробуйте позже.";
       }
-
-      // Закрываем панель создания, если она была открыта
-      this.showCreatePanel = false;
     },
 
     // Метод для навигации к карте
@@ -1092,6 +1135,12 @@ export default {
 
       // Запускаем поиск и обновление в структуре папок
       updateMapInItems(this.folderStructure);
+    },
+
+    // Обработчик события "open-map" от компонента MapPreview
+    handleOpenMap(mapId) {
+      console.log("MainPage - Запрос на открытие карты с ID:", mapId);
+      this.navigateToMap(mapId);
     },
   },
 

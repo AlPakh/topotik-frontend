@@ -4,6 +4,12 @@
 
     <div class="map-container">
       <div class="map-sidebar">
+        <div class="create-btn-container">
+          <button class="create-btn" @click="showCreatePanel = true">
+            Создать
+          </button>
+        </div>
+
         <div class="sidebar-header">
           <h3>{{ mapName }}</h3>
         </div>
@@ -83,12 +89,6 @@
               </div>
             </div>
           </div>
-        </div>
-
-        <div class="create-btn-container">
-          <button class="create-btn" @click="showCreatePanel = true">
-            Создать
-          </button>
         </div>
       </div>
 

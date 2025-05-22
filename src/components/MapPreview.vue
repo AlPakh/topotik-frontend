@@ -70,8 +70,16 @@ export default {
         this.map.background_image_id
       );
 
+      // Проверяем конкретно URL для прокси (добавлено для решения проблемы)
+      const hasProxyUrl = !!(
+        this.map.background_image_url &&
+        this.map.background_image_url.includes("/images/proxy/")
+      );
+      console.log("MapPreview - Содержит proxy URL:", hasProxyUrl);
+
       // Проверяем все возможные поля, связанные с изображением
       const hasImage = !!(
+        hasProxyUrl || // Приоритетно проверяем наличие прокси URL
         this.map.background_image_url ||
         this.map.background_image_id ||
         this.map.backgroundImageUrl ||
@@ -82,10 +90,9 @@ export default {
         // Проверка вложенных объектов, где может быть информация об изображении
         (this.map.image && this.map.image.url) ||
         (this.map.image && this.map.image.id) ||
-        // Проверка флага is_custom, который может указывать на наличие изображения
-        (this.map.is_custom === true &&
-          (this.map.mapType === "custom" ||
-            this.map.map_type === "custom_image"))
+        // Проверка флага is_custom и наличия типа custom_image как индикатора наличия изображения
+        (this.map.map_type === "custom_image" &&
+          (this.map.background_image_id || this.map.is_custom === true))
       );
 
       console.log(
@@ -97,6 +104,27 @@ export default {
     backgroundImageUrl() {
       // Добавляем подробные логи для отладки
       console.log("MapPreview - Определение URL изображения");
+
+      // Проверяем сначала прокси URL (добавлено для решения проблемы)
+      if (
+        this.map.background_image_url &&
+        this.map.background_image_url.includes("/images/proxy/")
+      ) {
+        const proxyUrl = this.map.background_image_url;
+        console.log("MapPreview - Используется прокси URL:", proxyUrl);
+
+        // Добавляем API_URL если URL относительный
+        if (proxyUrl.startsWith("/")) {
+          const API_URL =
+            process.env.VUE_APP_API_URL || "http://localhost:8000";
+          console.log(
+            "MapPreview - Преобразован в полный URL:",
+            API_URL + proxyUrl
+          );
+          return API_URL + proxyUrl;
+        }
+        return proxyUrl;
+      }
 
       // Проверяем сначала готовый URL (разные варианты имен полей)
       if (this.map.background_image_url) {
@@ -124,7 +152,7 @@ export default {
         return this.map.image.url;
       }
 
-      // Если есть ID, но нет URL, конструируем URL
+      // Если есть ID, но нет URL, конструируем URL для прокси
       let imageId = null;
       if (this.map.background_image_id) {
         imageId = this.map.background_image_id;
@@ -140,13 +168,11 @@ export default {
           imageId
         );
 
-        // Проверяем, не содержит ли ID уже расширение файла
-        const hasExtension = imageId.includes(".");
-        const url = hasExtension
-          ? `https://s3.eu-central-003.backblazeb2.com/bex-sber-bucket/map_images/${imageId}`
-          : `https://s3.eu-central-003.backblazeb2.com/bex-sber-bucket/map_images/${imageId}.png`;
+        // Используем прокси URL вместо прямого обращения к S3
+        const API_URL = process.env.VUE_APP_API_URL || "http://localhost:8000";
+        const url = `${API_URL}/images/proxy/${imageId}`;
 
-        console.log("MapPreview - Сконструированный URL:", url);
+        console.log("MapPreview - Сконструированный прокси URL:", url);
         return url;
       }
 
@@ -172,24 +198,26 @@ export default {
       this.$emit("upload-image", mapId);
     },
     openMap() {
+      // Проверяем, можно ли открыть карту (для пользовательских карт требуется фоновое изображение)
       if (this.isCustomMap && !this.hasBackgroundImage) {
-        return; // Блокируем открытие карты, если нет фонового изображения
+        console.log(
+          "MapPreview - Невозможно открыть карту без фонового изображения"
+        );
+        this.$notify({
+          type: "warning",
+          title: "Внимание",
+          text: "Загрузите фоновое изображение, чтобы открыть карту",
+        });
+        return;
       }
 
-      // Определяем маршрут в зависимости от типа карты
-      const route = this.isCustomMap ? "CustomMapView" : "MapView";
-
+      console.log(
+        "MapPreview - Открытие карты:",
+        this.map.title || this.map.name
+      );
       // Определяем ID карты (может быть как map_id, так и id)
       const mapId = this.map.map_id || this.map.id;
-
-      console.log("Переход на маршрут:", route, "с ID:", mapId);
-
-      // Перенаправляем на соответствующий маршрут
-      this.$router.push({
-        name: route,
-        params: { id: mapId },
-        query: { name: this.map.title || this.map.name },
-      });
+      this.$emit("open-map", mapId);
     },
   },
 };

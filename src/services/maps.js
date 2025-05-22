@@ -21,8 +21,30 @@ export const getMaps = async () => {
  * @param {string} mapId - ID карты
  */
 export const getMapById = async (mapId) => {
-    const response = await api.get(`/maps/${mapId}`)
-    return response.data
+    try {
+        console.log(`Получение данных карты: ${mapId}`);
+        const response = await api.get(`/maps/${mapId}/with-image`);
+
+        // Проверяем наличие фонового изображения и форматируем URL правильно
+        if (response.data && response.data.background_image_id) {
+            console.log('Карта имеет фоновое изображение:', response.data.background_image_id);
+
+            // Проверяем, содержит ли ответ уже URL изображения
+            if (!response.data.background_image_url) {
+                // Если URL отсутствует, формируем его из ID
+                const API_URL = process.env.VUE_APP_API_URL || 'http://localhost:8000';
+                response.data.background_image_url = `${API_URL}/images/proxy/${response.data.background_image_id}`;
+                console.log('Сформирован URL изображения:', response.data.background_image_url);
+            }
+        } else {
+            console.log('Карта не имеет фонового изображения');
+        }
+
+        return response.data;
+    } catch (error) {
+        console.error('Ошибка при получении данных карты:', error);
+        throw error;
+    }
 }
 
 /**

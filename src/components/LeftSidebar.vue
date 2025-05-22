@@ -1,5 +1,10 @@
 <template>
   <div class="left-sidebar">
+    <div class="create-btn-container">
+      <!-- Кнопка создания нового элемента -->
+      <button class="create-btn" @click="$emit('createNew')">Создать</button>
+    </div>
+
     <div class="sidebar-header" @click="showRootContents">
       <h3>Проекты</h3>
     </div>
@@ -29,11 +34,6 @@
         "
       />
     </ul>
-
-    <!-- Кнопка создания нового элемента -->
-    <div class="create-btn-container">
-      <button class="create-btn" @click="$emit('createNew')">Создать</button>
-    </div>
   </div>
 </template>
 
