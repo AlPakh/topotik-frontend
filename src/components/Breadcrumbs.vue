@@ -15,7 +15,10 @@
     </div>
 
     <!-- Свернутая часть -->
-    <div v-if="pathItems.length > 5" class="breadcrumb-item-container">
+    <div
+      v-if="pathItems.length > 5"
+      class="breadcrumb-item-container collapsed-container"
+    >
       <span class="breadcrumb-separator">/</span>
       <span
         class="breadcrumb-item collapsed"
@@ -143,6 +146,10 @@ export default {
   align-items: center;
 }
 
+.collapsed-container {
+  position: relative; /* Нужно для абсолютного позиционирования дочернего меню */
+}
+
 .breadcrumb-item {
   color: #4a90e2;
   cursor: pointer;
@@ -194,7 +201,8 @@ export default {
 .breadcrumb-menu {
   position: absolute;
   top: 100%;
-  left: 0;
+  left: 50%;
+  transform: translateX(-50%); /* Центрирование относительно родителя */
   z-index: 100;
   background: white;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
