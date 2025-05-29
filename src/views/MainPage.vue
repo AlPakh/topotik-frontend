@@ -13,7 +13,6 @@
         @moveItem="handleMoveItem"
         @renameItem="handleRenameItem"
         @deleteItem="confirmDeleteItem"
-        @showRootContents="showRootDirectory"
         @folderToggled="handleFolderToggled"
         @updateExpandedFolders="updateExpandedFolders"
       />
@@ -34,7 +33,10 @@
           <div v-else-if="selectedItem && selectedItem.type === 'folder'">
             <div class="folder-preview-container">
               <div class="view-controls">
-                <h2>{{ selectedItem.name }}</h2>
+                <breadcrumbs-navigation
+                  :pathItems="getPathToItem(selectedItem.id)"
+                  @navigate="handleBreadcrumbNavigation"
+                />
                 <switch-view @switchView="viewMode = $event" />
               </div>
               <folder-content-view
@@ -42,17 +44,26 @@
                 :viewMode="viewMode"
                 @selectItem="handleSelectItem"
                 @moveItem="handleMoveItem"
+                @createNew="handleCreateNew"
               />
             </div>
           </div>
 
           <!-- Если выбрали карту -->
           <div v-else-if="selectedItem && selectedItem.type === 'map'">
-            <map-preview
-              :map="selectedItem"
-              @upload-image="handleImageUpload"
-              @openMap="handleOpenMap"
-            />
+            <div class="map-container">
+              <div class="map-header">
+                <breadcrumbs-navigation
+                  :pathItems="getPathToItem(selectedItem.id)"
+                  @navigate="handleBreadcrumbNavigation"
+                />
+              </div>
+              <map-preview
+                :map="selectedItem"
+                @upload-image="handleImageUpload"
+                @openMap="handleOpenMap"
+              />
+            </div>
           </div>
 
           <!-- Загрузка и сообщения об ошибках -->
@@ -135,6 +146,7 @@ import FolderContentView from "@/components/FolderContentView.vue";
 import AppHeader from "@/components/AppHeader.vue";
 import MapPreview from "@/components/MapPreview.vue";
 import ImageUploader from "@/components/ImageUploader.vue";
+import BreadcrumbsNavigation from "@/components/Breadcrumbs.vue";
 import {
   getFolderStructure,
   createMap,
@@ -166,6 +178,7 @@ export default {
     AppHeader,
     MapPreview,
     ImageUploader,
+    BreadcrumbsNavigation,
   },
   data() {
     return {
@@ -208,14 +221,89 @@ export default {
       // После загрузки структуры выбираем корневую папку
       this.selectRootFolder();
     }
+
+    // Добавляем глобальный обработчик события для showRootDirectory
+    window.addEventListener(
+      "app:showRootDirectory",
+      this.handleShowRootDirectory
+    );
   },
   methods: {
+    // Обработчик глобального события для перехода к корневому каталогу
+    handleShowRootDirectory() {
+      console.log("MainPage: Получено событие app:showRootDirectory");
+      this.showRootDirectory();
+    },
+
+    // Обработка навигации по хлебным крошкам
+    handleBreadcrumbNavigation(item) {
+      if (!item) {
+        // Если item равен null, значит переходим в корневой каталог
+        this.showRootDirectory();
+      } else {
+        // Находим элемент по ID и переходим к нему
+        const foundItem = this.findItemById(item.id, this.folderStructure);
+        if (foundItem) {
+          this.handleSelectItem(foundItem);
+        }
+      }
+    },
+
+    // Получает путь к элементу в виде массива объектов с id и name
+    getPathToItem(itemId) {
+      const path = [];
+
+      // Если itemId не задан, возвращаем пустой путь
+      if (!itemId) return path;
+
+      // Рекурсивно строим путь от корня до элемента
+      const buildPath = (id, items) => {
+        for (const item of items) {
+          if (item.id === id) {
+            // Нашли элемент, добавляем его в путь
+            path.unshift({
+              id: item.id,
+              name: item.name || item.title,
+              type: item.type,
+            });
+            return true;
+          }
+
+          // Если это папка, ищем внутри неё
+          if (item.type === "folder" && item.children) {
+            // Пытаемся найти элемент в детях
+            if (buildPath(id, item.children)) {
+              // Если нашли, добавляем текущую папку в путь и продолжаем
+              path.unshift({
+                id: item.id,
+                name: item.name || item.title,
+                type: item.type,
+              });
+              return true;
+            }
+          }
+        }
+
+        return false;
+      };
+
+      buildPath(itemId, this.folderStructure);
+      return path;
+    },
+
     // Пытаемся восстановить последнюю посещенную папку из cookies
     async tryRestoreLastFolder() {
       const lastFolder = getLastOpenedFolder();
 
       if (lastFolder && lastFolder.id) {
-        // Проверяем, существует ли такая папка
+        // Специальная обработка для корневого каталога
+        if (lastFolder.id === "root") {
+          console.log("Восстановление корневого каталога");
+          this.showRootDirectory();
+          return;
+        }
+
+        // Для остальных папок проверяем, существует ли такая папка
         const folderExists = this.findItemById(
           lastFolder.id,
           this.folderStructure
@@ -860,7 +948,7 @@ export default {
       const rootFolder = {
         id: "root", // Символический ID, не используется в запросах к API
         type: "folder",
-        name: "Корневой каталог",
+        name: "Главная",
         children: this.getRootItems(),
       };
 
@@ -870,7 +958,7 @@ export default {
       // Сохраняем информацию о выбранной "папке"
       saveLastOpenedFolder({
         id: "root",
-        name: "Корневой каталог",
+        name: "Главная",
         type: "folder",
       });
 
@@ -1149,6 +1237,12 @@ export default {
     if (this.cascadeDeleteTimer) {
       clearInterval(this.cascadeDeleteTimer);
     }
+
+    // Удаляем глобальный обработчик события
+    window.removeEventListener(
+      "app:showRootDirectory",
+      this.handleShowRootDirectory
+    );
   },
 };
 </script>

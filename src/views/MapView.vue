@@ -15,10 +15,11 @@
         @marker-drop="handleMarkerDrop"
         @category-drop="handleCategoryDrop"
         @marker-drag-start="onMarkerDragStartHandler"
+        @sidebar-toggle="handleSidebarToggle"
       />
 
       <div class="map-view">
-        <div id="map" class="map-container" ref="mapContainer"></div>
+        <div id="map" ref="mapContainer"></div>
 
         <!-- Панель создания элементов -->
         <div v-if="showCreatePanel" class="create-overlay">
@@ -2840,8 +2841,20 @@ export default {
       // Закрываем редактор цвета
       this.showColorEditor = false;
     },
+    handleSidebarToggle(isCollapsed) {
+      // Обновляем размер карты после изменения состояния боковой панели
+      setTimeout(() => {
+        if (this.map) {
+          this.map.invalidateSize();
+          console.log(
+            "Боковая панель " + (isCollapsed ? "свёрнута" : "развёрнута")
+          );
+        }
+      }, 400); // Ждем немного больше времени, чем длительность анимации
+    },
   },
 };
 </script>
 
 <style scoped src="@/assets/css/views/MapView.css"></style>
+<style scoped src="@/assets/css/components/MapSidebar.css"></style>

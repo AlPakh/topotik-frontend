@@ -7,7 +7,6 @@
       </div>
     </div>
     <div class="map-info">
-      <h3>{{ map.title }}</h3>
       <div class="map-actions">
         <button v-if="isCustomMap" @click="uploadImage" class="upload-btn">
           {{
@@ -267,14 +266,6 @@ export default {
 
 .map-info {
   padding: 10px 15px;
-}
-
-.map-info h3 {
-  margin: 0 0 10px 0;
-  font-size: 16px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .map-actions {

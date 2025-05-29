@@ -5,10 +5,6 @@
       <button class="create-btn" @click="$emit('createNew')">Создать</button>
     </div>
 
-    <div class="sidebar-header" @click="showRootContents">
-      <h3>Проекты</h3>
-    </div>
-
     <!-- Дерево папок и карт -->
     <ul
       class="folder-tree"
@@ -63,13 +59,7 @@ export default {
     };
   },
   methods: {
-    // Обработчик клика на заголовок "Проекты"
-    showRootContents() {
-      // Генерируем событие для отображения корневого каталога
-      this.$emit("showRootContents");
-    },
-
-    // Обработка события разворачивания/сворачивания папки
+    // Обработчик события разворачивания/сворачивания папки
     handleFolderToggled(data) {
       // Передаем событие наверх
       this.$emit("folderToggled", data);

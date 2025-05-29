@@ -2163,7 +2163,7 @@ export default {
 };
 </script>
 
-<style scoped src="@/assets/css/views/MapView.css"></style>
+<style scoped src="@/assets/css/views/MapView.css"></style> 
 <style scoped>
 /* Стиль для курсора в режиме добавления маркера */
 #map.adding-marker-mode {

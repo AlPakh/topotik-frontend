@@ -1,5 +1,11 @@
 <template>
-  <div class="map-sidebar">
+  <div class="map-sidebar" :class="{ collapsed: isCollapsed }">
+    <div class="sidebar-toggle" @click="toggleSidebar">
+      <div class="toggle-arrows">
+        {{ isCollapsed ? "»" : "«" }}
+      </div>
+    </div>
+
     <div class="create-btn-container">
       <button class="create-btn" @click="$emit('show-create-panel')">
         Создать
@@ -102,9 +108,15 @@ export default {
     return {
       dragEnterCategory: null,
       dragEnterMarker: null,
+      isCollapsed: false,
     };
   },
   methods: {
+    toggleSidebar() {
+      this.isCollapsed = !this.isCollapsed;
+      // Уведомляем родительский компонент о изменении состояния
+      this.$emit("sidebar-toggle", this.isCollapsed);
+    },
     toggleCategory(category) {
       category.expanded = !category.expanded;
       this.$emit("category-toggled", category);
@@ -206,3 +218,4 @@ export default {
 </script>
 
 <style scoped src="@/assets/css/views/MapView.css"></style>
+<style scoped src="@/assets/css/components/MapSidebar.css"></style>

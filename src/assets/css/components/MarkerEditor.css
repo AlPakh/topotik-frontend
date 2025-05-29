@@ -16,15 +16,32 @@
     position: absolute;
     left: 0;
     top: 0;
-    width: 5px;
+    width: 8px;
     height: 100%;
     cursor: ew-resize;
     background-color: transparent;
     z-index: 1001;
+    transition: background-color 0.2s;
 }
 
 .resize-handle:hover {
-    background-color: rgba(0, 0, 0, 0.05);
+    background-color: rgba(0, 0, 0, 0.1);
+}
+
+.resize-handle:hover::after {
+    color: #666;
+}
+
+.resize-handle::after {
+    content: "⋮";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 1.5em;
+    color: #999;
+    line-height: 1;
+    pointer-events: none;
 }
 
 .editor-header {
@@ -86,6 +103,7 @@
     flex: 1;
     overflow-y: auto;
     padding: 20px;
+    margin-bottom: 30px;
 }
 
 .editor-form {

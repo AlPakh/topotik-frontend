@@ -27,72 +27,85 @@
     <!-- Сообщение, если папка пуста -->
     <div v-if="items.length === 0" class="empty-folder">
       <p>Папка пуста</p>
-      <p class="hint">Создайте новую карту или папку, либо перетащите существующие элементы сюда</p>
+      <p class="hint">
+        Создайте новую карту или папку, либо перетащите существующие элементы
+        сюда
+      </p>
+      <button class="create-btn" @click="onCreateNew">Создать</button>
     </div>
   </div>
 </template>
 
 <script>
 export default {
-  name: 'FolderContentView',
+  name: "FolderContentView",
   props: {
     items: {
       type: Array,
-      default: () => []
+      default: () => [],
     },
     viewMode: {
       type: String,
-      default: 'list'
-    }
+      default: "list",
+    },
   },
   methods: {
     onSelect(item) {
-      this.$emit('selectItem', item)
+      this.$emit("selectItem", item);
+    },
+    onCreateNew() {
+      // Генерируем такое же событие, как и кнопка в LeftSidebar
+      this.$emit("createNew");
     },
     onDragStart(event, item) {
-      event.dataTransfer.setData('text/plain', JSON.stringify({
-        id: item.id,
-        type: item.type,
-        name: item.name,
-        mapType: item.mapType
-      }))
-      event.dataTransfer.effectAllowed = 'move'
+      event.dataTransfer.setData(
+        "text/plain",
+        JSON.stringify({
+          id: item.id,
+          type: item.type,
+          name: item.name,
+          mapType: item.mapType,
+        })
+      );
+      event.dataTransfer.effectAllowed = "move";
     },
     onDrop(event, targetItem) {
       // Сбрасываем подсветку
-      event.currentTarget.classList.remove('drag-over')
-      
-      const sourceItemData = JSON.parse(event.dataTransfer.getData('text/plain'))
-      
+      event.currentTarget.classList.remove("drag-over");
+
+      const sourceItemData = JSON.parse(
+        event.dataTransfer.getData("text/plain")
+      );
+
       // Если целевой элемент - папка, переместить внутрь
-      if (targetItem.type === 'folder') {
+      if (targetItem.type === "folder") {
         // Если источник - тоже папка, добавляем флаг проверки на циклическую зависимость
-        if (sourceItemData.type === 'folder') {
-          this.$emit('moveItem', { 
-            sourceId: sourceItemData.id, 
+        if (sourceItemData.type === "folder") {
+          this.$emit("moveItem", {
+            sourceId: sourceItemData.id,
             targetId: targetItem.id,
-            checkCycle: true
-          })
+            checkCycle: true,
+          });
         } else {
           // Для карт просто перемещаем
-          this.$emit('moveItem', { 
-            sourceId: sourceItemData.id, 
-            targetId: targetItem.id 
-          })
+          this.$emit("moveItem", {
+            sourceId: sourceItemData.id,
+            targetId: targetItem.id,
+          });
         }
       }
     },
     highlightItem(event) {
       // Подсвечиваем только папки при перетаскивании
-      if (event.currentTarget.querySelector('.folder')) {
-        event.currentTarget.classList.add('drag-over')
+      if (event.currentTarget.querySelector(".folder")) {
+        event.currentTarget.classList.add("drag-over");
       }
     },
     unhighlightItem(event) {
-      event.currentTarget.classList.remove('drag-over')
-    }
-  }
-}
+      event.currentTarget.classList.remove("drag-over");
+    },
+  },
+};
 </script>
 
 <style scoped src="@/assets/css/components/FolderContentView.css"></style>

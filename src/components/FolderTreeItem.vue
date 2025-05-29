@@ -99,8 +99,30 @@ export default {
   },
   computed: {
     displayName() {
-      // Для примера: если имя слишком длинное, обрезаем визуально,
-      // а при наведении можно title отобразить
+      // Форматируем имя для отображения
+      if (!this.item.name) return "";
+
+      // Если имя длиннее 20 символов, сокращаем его
+      if (this.item.name.length > 20) {
+        // Проверяем, есть ли в имени символы разделителя, чтобы сократить по ним
+        if (this.item.name.includes("/") || this.item.name.includes("\\")) {
+          // Получаем последнюю часть пути (имя файла/папки)
+          const parts = this.item.name.split(/[/\\]/);
+          const lastPart = parts.pop();
+
+          // Если даже последняя часть длинная, сокращаем её
+          if (lastPart.length > 20) {
+            return lastPart.substring(0, 17) + "...";
+          }
+
+          // Возвращаем ".../<последняя часть>"
+          return ".../" + lastPart;
+        }
+
+        // Обычное сокращение для длинных имен
+        return this.item.name.substring(0, 17) + "...";
+      }
+
       return this.item.name;
     },
   },

@@ -11,6 +11,8 @@
           v-model="localMarker.name"
           class="editor-title"
           @input="handleTitleInput($event)"
+          @keydown="handleTitleKeyDown($event)"
+          @blur="handleBlur"
           placeholder="Название метки"
         ></textarea>
         <div class="header-subtitle">
@@ -30,7 +32,7 @@
           </button>
         </div>
       </div>
-      <button class="close-button" @click="$emit('close')">&times;</button>
+      <button class="close-button" @click="saveAndClose">&times;</button>
     </div>
 
     <div class="editor-content">
@@ -40,6 +42,7 @@
             v-for="(block, index) in localMarker.blocks"
             :key="index"
             class="content-block"
+            :data-block-index="index"
             @mouseover="hoveredBlockIndex = index"
             @mouseleave="hoveredBlockIndex = null"
           >
@@ -78,7 +81,7 @@
                   v-model="block.content"
                   ref="textarea"
                   class="form-textarea"
-                  @input="handleTextareaInput($event, index)"
+                  @input="handleTextareaInput($event)"
                   @focus="onBlockFocus(index)"
                   @blur="handleTextareaBlur(index)"
                   @keydown="handleKeyDown($event, index)"
@@ -94,7 +97,7 @@
                   v-model="block.content"
                   ref="textarea"
                   class="form-textarea"
-                  @input="handleTextareaInput($event, index)"
+                  @input="handleTextareaInput($event)"
                   @focus="onBlockFocus(index)"
                   @blur="handleTextareaBlur(index)"
                   @keydown="handleKeyDown($event, index)"
@@ -110,7 +113,7 @@
                   v-model="block.content"
                   ref="textarea"
                   class="form-textarea"
-                  @input="handleTextareaInput($event, index)"
+                  @input="handleTextareaInput($event)"
                   @focus="onBlockFocus(index)"
                   @blur="handleTextareaBlur(index)"
                   @keydown="handleKeyDown($event, index)"
@@ -126,7 +129,7 @@
                   v-model="block.content"
                   ref="textarea"
                   class="form-textarea"
-                  @input="handleTextareaInput($event, index)"
+                  @input="handleTextareaInput($event)"
                   @focus="onBlockFocus(index)"
                   @blur="handleTextareaBlur(index)"
                   @keydown="handleKeyDown($event, index)"
@@ -139,7 +142,7 @@
                   v-model="block.content"
                   ref="textarea"
                   class="form-textarea"
-                  @input="handleTextareaInput($event, index)"
+                  @input="handleTextareaInput($event)"
                   @focus="onBlockFocus(index)"
                   @blur="handleTextareaBlur(index)"
                   @keydown="handleKeyDown($event, index)"
@@ -156,7 +159,7 @@
                   v-model="block.content"
                   ref="textarea"
                   class="form-textarea list-item-textarea"
-                  @input="handleTextareaInput($event, index)"
+                  @input="handleTextareaInput($event)"
                   @focus="onBlockFocus(index)"
                   @blur="handleTextareaBlur(index)"
                   @keydown="handleKeyDown($event, index)"
@@ -173,7 +176,7 @@
                   v-model="block.content"
                   ref="textarea"
                   class="form-textarea ordered-list-textarea"
-                  @input="handleTextareaInput($event, index)"
+                  @input="handleTextareaInput($event)"
                   @focus="onBlockFocus(index)"
                   @blur="handleTextareaBlur(index)"
                   @keydown="handleOrderedListKeyDown($event, index)"
@@ -195,7 +198,7 @@
                   v-model="block.content"
                   ref="textarea"
                   class="form-textarea task-textarea"
-                  @input="handleTextareaInput($event, index)"
+                  @input="handleTextareaInput($event)"
                   @focus="onBlockFocus(index)"
                   @blur="handleTextareaBlur(index)"
                   @keydown="handleKeyDown($event, index)"
@@ -239,7 +242,7 @@
                     v-model="block.content"
                     ref="textarea"
                     class="form-textarea alert-textarea"
-                    @input="handleTextareaInput($event, index)"
+                    @input="handleTextareaInput($event)"
                     @focus="onBlockFocus(index)"
                     @blur="handleTextareaBlur(index)"
                     @keydown="handleKeyDown($event, index)"
@@ -288,7 +291,7 @@
                   v-model="block.content"
                   ref="textarea"
                   class="form-textarea iframe-textarea"
-                  @input="handleTextareaInput($event, index)"
+                  @input="handleTextareaInput($event)"
                   @focus="onBlockFocus(index)"
                   @blur="handleTextareaBlur(index)"
                   @keydown="handleKeyDown($event, index)"
@@ -315,9 +318,9 @@
       </div>
     </div>
 
-    <div class="editor-footer">
+    <!-- <div class="editor-footer">
       <button class="save-button" @click="save">Сохранить</button>
-    </div>
+    </div> -->
 
     <!-- Меню добавления блока -->
     <div
@@ -522,6 +525,8 @@ export default {
       editorWidth: 400,
       startX: 0,
       startWidth: 400,
+      saveTimer: null, // Таймер для отложенного сохранения
+      inputTimeout: null, // Таймер для дебаунса ввода текста
     };
   },
   computed: {
@@ -565,6 +570,9 @@ export default {
     // Гарантированно применяем autoGrow после полной загрузки DOM
     this.$nextTick(() => {
       this.resizeAllTextareas();
+
+      // Установка фокуса на последний блок
+      this.focusLastBlock();
     });
 
     // Добавляем обработчики для изменения размера
@@ -627,11 +635,47 @@ export default {
     document.removeEventListener("mousemove", this.handleMouseMove);
     document.removeEventListener("mouseup", this.handleMouseUp);
     window.removeEventListener("resize", this.calculateMaxWidth);
+
+    // Очищаем таймер автосохранения при уничтожении компонента
+    if (this.saveTimer) {
+      clearTimeout(this.saveTimer);
+    }
   },
   methods: {
     handleTitleInput(event) {
       // Автоматически изменяем высоту поля заголовка при вводе
       this.autoGrow(event.target);
+    },
+
+    handleTitleKeyDown(event) {
+      // Отменяем действие Enter (перенос строки) в заголовке
+      if (event.key === "Enter") {
+        event.preventDefault();
+      }
+    },
+
+    saveAndClose() {
+      // Сначала сохраняем изменения
+      this.save();
+      // Затем закрываем редактор
+      this.$emit("close");
+    },
+
+    handleBlur() {
+      this.saveWithDelay();
+    },
+
+    // Метод для сохранения с небольшой задержкой
+    saveWithDelay() {
+      // Очищаем предыдущий таймер, если он был установлен
+      if (this.saveTimer) {
+        clearTimeout(this.saveTimer);
+      }
+
+      // Устанавливаем новый таймер с небольшой задержкой (300мс)
+      this.saveTimer = setTimeout(() => {
+        this.save();
+      }, 300);
     },
 
     closeAllMenus() {
@@ -752,6 +796,22 @@ export default {
           // Добавляем две пустые текстовые строки
           this.localMarker.blocks.push({ type: "text", content: "" });
           this.localMarker.blocks.push({ type: "text", content: "" });
+
+          // Сразу устанавливаем фокус на первую пустую строку после разделителя
+          this.$nextTick(() => {
+            const textareas = document.querySelectorAll(
+              ".content-block textarea"
+            );
+            if (textareas[newIndex + 1]) {
+              textareas[newIndex + 1].focus();
+              this.autoGrow(textareas[newIndex + 1]);
+            }
+          });
+
+          this.showBlockTypeMenu = false;
+          // Проверяем наличие пустого блока в конце
+          this.ensureEmptyBlockAtEnd();
+          return;
         }
       }
 
@@ -768,16 +828,11 @@ export default {
         let focusIndex;
 
         if (type === "divider") {
-          // Если добавлен разделитель и он последний, фокусируемся на первой пустой строке после него
-          if (newIndex === this.localMarker.blocks.length - 3) {
-            focusIndex = this.localMarker.blocks.length - 3;
-          } else {
-            // Иначе фокусируемся на следующем за разделителем блоке, если он есть
-            focusIndex =
-              newIndex + 1 < this.localMarker.blocks.length
-                ? newIndex + 1
-                : newIndex;
-          }
+          // Если добавлен разделитель, фокусируемся на следующем за ним блоке
+          focusIndex =
+            newIndex + 1 < this.localMarker.blocks.length
+              ? newIndex + 1
+              : newIndex;
         } else {
           // Для всех остальных блоков устанавливаем фокус на сам добавленный блок
           focusIndex = newIndex;
@@ -803,14 +858,14 @@ export default {
 
       // Проверяем, является ли блок последним
       if (index === this.localMarker.blocks.length - 1) {
-        // Если последний блок не пустой, добавляем новый пустой блок
+        // Создаем новый блок ТОЛЬКО если последний блок заполнен полностью
+        // и только при потере фокуса, а не при каждом вводе символа
         if (
-          (block.type === "text" && block.content.trim() !== "") ||
-          (block.type === "heading1" && block.content.trim() !== "") ||
-          (block.type === "heading2" && block.content.trim() !== "") ||
-          (block.type === "heading3" && block.content.trim() !== "") ||
-          (block.type === "quote" && block.content.trim() !== "")
+          block.type === "text" &&
+          block.content.trim() !== "" &&
+          block.content.trim().length > 10
         ) {
+          // Добавляем порог для создания нового блока
           this.addNewBlock("text", index);
         }
       }
@@ -1101,6 +1156,7 @@ export default {
         // Если текущий блок - элемент списка, создаем еще один элемент списка
         const newBlockType = block.type === "list-item" ? "list-item" : "text";
 
+        // Вставляем новый блок
         this.localMarker.blocks.splice(index + 1, 0, {
           type: newBlockType,
           content: textAfterCursor,
@@ -1307,7 +1363,10 @@ export default {
           // Обрабатываем другие типы блоков
           switch (block.type) {
             case "text":
-              if (block.content.trim() !== "") {
+              // Добавляем пустую строку для пустого текстового блока
+              if (block.content.trim() === "") {
+                result.push("");
+              } else {
                 result.push(block.content);
               }
               break;
@@ -1368,58 +1427,63 @@ export default {
         result.push(listContents.join("\n"));
       }
 
-      return result.filter((content) => content !== "").join("\n\n");
+      return result.join("\n\n");
     },
 
     // Преобразование Markdown в блоки
     markdownToBlocks(markdown) {
       if (!markdown) return [{ type: "text", content: "" }];
 
-      const lines = markdown.split("\n");
+      // Сохраняем все переносы строк, заменяя \n\n на специальный маркер
+      let processedMarkdown = markdown.replace(/\n\n/g, "\n⚛\n");
+
+      // Разбиваем по строкам
+      const lines = processedMarkdown.split("\n");
       const blocks = [];
 
       let i = 0;
       while (i < lines.length) {
-        const line = lines[i].trim();
+        const line = lines[i];
 
-        // Пропускаем пустые строки
-        if (line === "") {
+        // Обработка специального маркера - это означает пустую строку
+        if (line === "⚛" || line.trim() === "" || line === "") {
+          blocks.push({ type: "text", content: "" });
           i++;
           continue;
         }
 
         // Заголовок 1 уровня
-        if (line.startsWith("# ")) {
+        if (line.trim().startsWith("# ")) {
           blocks.push({
             type: "heading1",
-            content: line.substring(2).trim(),
+            content: line.trim().substring(2).trim(),
           });
           i++;
           continue;
         }
 
         // Заголовок 2 уровня
-        if (line.startsWith("## ")) {
+        if (line.trim().startsWith("## ")) {
           blocks.push({
             type: "heading2",
-            content: line.substring(3).trim(),
+            content: line.trim().substring(3).trim(),
           });
           i++;
           continue;
         }
 
         // Заголовок 3 уровня
-        if (line.startsWith("### ")) {
+        if (line.trim().startsWith("### ")) {
           blocks.push({
             type: "heading3",
-            content: line.substring(4).trim(),
+            content: line.trim().substring(4).trim(),
           });
           i++;
           continue;
         }
 
         // Задача с чекбоксом
-        const taskMatch = line.match(/^-\s*\[([ xX])\]\s*(.+)$/);
+        const taskMatch = line.trim().match(/^-\s*\[([ xX])\]\s*(.+)$/);
         if (taskMatch) {
           blocks.push({
             type: "task-item",
@@ -1431,27 +1495,27 @@ export default {
         }
 
         // Элемент маркированного списка (с дефисом)
-        if (line.startsWith("- ")) {
+        if (line.trim().startsWith("- ")) {
           blocks.push({
             type: "list-item",
-            content: line.substring(2).trim(),
+            content: line.trim().substring(2).trim(),
           });
           i++;
           continue;
         }
 
         // Элемент маркированного списка (со звездочкой)
-        if (line.startsWith("* ")) {
+        if (line.trim().startsWith("* ")) {
           blocks.push({
             type: "list-item",
-            content: line.substring(2).trim(),
+            content: line.trim().substring(2).trim(),
           });
           i++;
           continue;
         }
 
         // Элемент нумерованного списка
-        const orderedListMatch = line.match(/^(\d+)\.\s+(.+)$/);
+        const orderedListMatch = line.trim().match(/^(\d+)\.\s+(.+)$/);
         if (orderedListMatch) {
           blocks.push({
             type: "ordered-list-item",
@@ -1463,17 +1527,17 @@ export default {
         }
 
         // Горизонтальная линия
-        if (line === "---") {
+        if (line.trim() === "---") {
           blocks.push({ type: "divider" });
           i++;
           continue;
         }
 
         // Цитата
-        if (line.startsWith("> ")) {
+        if (line.trim().startsWith("> ")) {
           blocks.push({
             type: "quote",
-            content: line.substring(2).trim(),
+            content: line.trim().substring(2).trim(),
           });
           i++;
           continue;
@@ -1484,20 +1548,22 @@ export default {
         let textContent = line;
         let j = i + 1;
         while (j < lines.length) {
-          const nextLine = lines[j].trim();
+          const nextLine = lines[j];
 
-          // Если следующая строка - начало нового блока, прерываем сбор текста
+          // Если следующая строка - начало нового блока или специального маркера, прерываем сбор текста
           if (
             nextLine === "" ||
-            nextLine.startsWith("# ") ||
-            nextLine.startsWith("## ") ||
-            nextLine.startsWith("### ") ||
-            nextLine.startsWith("- ") ||
-            nextLine.startsWith("* ") ||
-            nextLine.match(/^\d+\.\s+/) ||
-            nextLine === "---" ||
-            nextLine.startsWith("> ") ||
-            nextLine.match(/^-\s*\[([ xX])\]\s*(.+)$/)
+            nextLine === "⚛" ||
+            nextLine.trim() === "" ||
+            nextLine.trim().startsWith("# ") ||
+            nextLine.trim().startsWith("## ") ||
+            nextLine.trim().startsWith("### ") ||
+            nextLine.trim().startsWith("- ") ||
+            nextLine.trim().startsWith("* ") ||
+            nextLine.trim().match(/^\d+\.\s+/) ||
+            nextLine.trim() === "---" ||
+            nextLine.trim().startsWith("> ") ||
+            nextLine.trim().match(/^-\s*\[([ xX])\]\s*(.+)$/)
           ) {
             break;
           }
@@ -1557,9 +1623,16 @@ export default {
       });
     },
     // Обработчик ввода в textarea
-    handleTextareaInput(event, index) {
-      this.autoGrow(event.target);
-      this.checkEmptyBlock(index);
+    handleTextareaInput(event) {
+      // Вызываем autoGrow после небольшой задержки для предотвращения частых вызовов
+      if (this.inputTimeout) {
+        clearTimeout(this.inputTimeout);
+      }
+
+      this.inputTimeout = setTimeout(() => {
+        this.autoGrow(event.target);
+        // Убираем вызов checkEmptyBlock при каждом вводе символа
+      }, 10);
     },
     // Улучшенная функция autoGrow
     autoGrow(element) {
@@ -1579,11 +1652,11 @@ export default {
       element.style.height = "0";
 
       // Вычисляем высоту на основе содержимого
-      // Учитываем только высоту текста и минимальную высоту строки
       const textHeight = element.scrollHeight;
 
-      // Подсчитываем количество строк (приблизительно)
-      const lines = element.value.split("\n").length;
+      // Подсчитываем количество строк по символам новой строки (+ 1 для последней строки)
+      // Используем строгий подход для предотвращения лишних переносов строк
+      const lines = Math.max(1, (element.value.match(/\n/g) || []).length + 1);
 
       // Рассчитываем точную высоту на основе количества строк и высоты строки
       // Добавляем небольшой отступ для предотвращения обрезания текста
@@ -1603,6 +1676,12 @@ export default {
       if (this.activeBlockIndex === index) {
         this.activeBlockIndex = null;
       }
+
+      // Проверяем необходимость добавления нового блока при потере фокуса
+      this.checkEmptyBlock(index);
+
+      // Автоматически сохраняем при потере фокуса
+      this.saveWithDelay();
     },
     addAlertBlock(type, index) {
       this.showAlertTypesMenu = false;
@@ -1905,6 +1984,64 @@ export default {
         default:
           return "Уведомление";
       }
+    },
+    // Добавляем новый метод для фокусировки на последнем блоке
+    focusLastBlock() {
+      this.$nextTick(() => {
+        // Находим последний редактируемый блок
+        const blocks = this.localMarker.blocks;
+        let lastEditableIndex = blocks.length - 1;
+
+        // Проверяем, что последний блок - текстовый
+        while (lastEditableIndex >= 0) {
+          const block = blocks[lastEditableIndex];
+          if (
+            block.type === "text" ||
+            block.type === "heading1" ||
+            block.type === "heading2" ||
+            block.type === "heading3" ||
+            block.type === "quote" ||
+            block.type === "list-item"
+          ) {
+            break;
+          }
+          lastEditableIndex--;
+        }
+
+        if (lastEditableIndex >= 0) {
+          // Устанавливаем фокус на последний блок
+          const textareas = document.querySelectorAll(
+            ".content-block textarea"
+          );
+          // Находим соответствующий textarea элемент
+          let foundIndex = -1;
+
+          // Обходим все textarea и ищем соответствующий последнему блоку
+          for (let i = 0; i < textareas.length; i++) {
+            const blockIndex = parseInt(
+              textareas[i]
+                .closest(".content-block")
+                .getAttribute("data-block-index") || "-1"
+            );
+            if (blockIndex === lastEditableIndex) {
+              foundIndex = i;
+              break;
+            }
+            // Если не удалось найти по атрибуту, используем последний textarea
+            if (i === textareas.length - 1) {
+              foundIndex = i;
+            }
+          }
+
+          if (foundIndex >= 0 && textareas[foundIndex]) {
+            textareas[foundIndex].focus();
+            // Устанавливаем курсор в конец текста
+            const len = textareas[foundIndex].value.length;
+            textareas[foundIndex].setSelectionRange(len, len);
+            this.autoGrow(textareas[foundIndex]);
+          }
+        }
+      });
     },
   },
 };

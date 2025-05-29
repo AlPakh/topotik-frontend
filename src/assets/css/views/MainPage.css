@@ -68,13 +68,20 @@
 
 .view-controls {
     display: flex;
-    justify-content: space-between;
+    flex-wrap: wrap;
     align-items: center;
-    margin-bottom: 20px;
+    justify-content: space-between;
+    margin-bottom: 15px;
+    gap: 10px;
+}
+
+.view-controls h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    flex-grow: 0;
 }
 
 .map-preview {
-    margin-top: 20px;
     padding: 20px;
     /*background-color: #f9f9f9;*/
     border-radius: 4px;
@@ -233,4 +240,36 @@
     .content-area {
         padding: 15px;
     }
+}
+
+/* Добавляю стили для новых элементов */
+.map-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 20px;
+}
+
+.map-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 10px;
+}
+
+.map-header h2 {
+    margin: 0;
+    font-size: 1.5rem;
+    flex-grow: 0;
+}
+
+/* Для правильного расположения хлебных крошек */
+.breadcrumbs-navigation {
+    display: contents;
+}
+
+.breadcrumbs {
+    flex-grow: 1;
+    margin: 0;
 }
