@@ -1577,11 +1577,29 @@ export default {
         // Даем приоритет name над title, т.к. name - это то, что пользователь изменяет в интерфейсе
         const name = updatedMarkerData.name || updatedMarkerData.title;
 
+        // Получаем координаты маркера
+        const rawLatitude =
+          updatedMarkerData.latitude || updatedMarkerData.position?.[0];
+        const rawLongitude =
+          updatedMarkerData.longitude || updatedMarkerData.position?.[1];
+
+        // Нормализуем координаты перед отправкой на сервер
+        const normalizedCoords = this.normalizeCoordinates(
+          rawLatitude,
+          rawLongitude
+        );
+        console.log("Исходные координаты:", {
+          latitude: rawLatitude,
+          longitude: rawLongitude,
+        });
+        console.log(
+          "Нормализованные координаты для обновления:",
+          normalizedCoords
+        );
+
         const markerData = {
-          latitude:
-            updatedMarkerData.latitude || updatedMarkerData.position?.[0],
-          longitude:
-            updatedMarkerData.longitude || updatedMarkerData.position?.[1],
+          latitude: normalizedCoords.latitude,
+          longitude: normalizedCoords.longitude,
           title: name, // Используем name в качестве title для сервера
           description: updatedMarkerData.description || "Описание метки",
         };
@@ -1653,137 +1671,122 @@ export default {
      */
     async saveMapData() {
       try {
+        console.log("Сохранение данных карты на сервере...");
         const mapId = this.$route.params.id;
+        const token = Cookies.get("access_token");
 
-        // Сохраняем каждую категорию как коллекцию
+        if (!token) {
+          console.error("Не найден токен авторизации");
+          return;
+        }
+
+        // Сохранение данных для каждой категории и её маркеров
         for (const category of this.categories) {
-          const collectionData = {
+          const categoryId = category.id;
+
+          // Обновляем категорию
+          const categoryData = {
             title: category.name,
             map_id: mapId,
-            is_public: false,
+            is_public: category.isPublic || false,
             collection_color: category.color,
           };
 
-          let collectionId = category.id;
+          // Отправляем запрос на обновление категории
+          const categoryResponse = await api.put(
+            `/collections/${categoryId}`,
+            categoryData
+          );
 
-          // Если у категории нет ID или ID локальный, создаем новую коллекцию
-          if (!collectionId || collectionId.toString().startsWith("local_")) {
-            try {
-              const response = await api.post("/collections/", collectionData);
-
-              if (response.data) {
-                const newCollection = response.data;
-                collectionId = newCollection.collection_id;
-                category.id = collectionId; // Обновляем ID категории
-                console.log(
-                  `Создана новая коллекция ${collectionId} для карты ${mapId}`
-                );
-              } else {
-                throw new Error("Ошибка при создании коллекции: ответ пуст");
-              }
-            } catch (error) {
-              console.error("Ошибка при создании коллекции:", error);
-              continue;
-            }
+          if (!categoryResponse.data) {
+            console.warn(`Не удалось обновить категорию ${categoryId}`);
           } else {
-            // Обновляем существующую коллекцию
-            try {
-              const response = await api.put(
-                `/collections/${collectionId}`,
-                collectionData
-              );
-
-              if (!response.data) {
-                console.warn(`Не удалось обновить коллекцию ${collectionId}`);
-              } else {
-                console.log(`Коллекция ${collectionId} успешно обновлена`);
-              }
-            } catch (error) {
-              console.error(
-                `Ошибка при обновлении коллекции ${collectionId}:`,
-                error
-              );
-            }
+            console.log(`Коллекция ${categoryId} успешно обновлена`);
           }
 
-          // Сохраняем маркеры коллекции
+          // Обновляем маркеры категории
           for (const marker of category.markers) {
-            // Преобразуем блоки в markdown если нужно
-            if (!marker.markdownContent && marker.blocks) {
-              marker.markdownContent = this.blocksToMarkdown(marker.blocks);
+            const markerId = marker.id || marker.marker_id;
+
+            if (!markerId) {
+              console.warn("Маркер без ID, пропускаем:", marker);
+              continue;
             }
 
+            // Формируем данные маркера для отправки
             const markerData = {
-              latitude: marker.latitude || marker.position[0],
-              longitude: marker.longitude || marker.position[1],
-              title: marker.name,
-              description: marker.markdownContent
-                ? marker.markdownContent.substring(0, 100)
-                : "", // Краткое описание
+              latitude:
+                marker.normalizedLatitude !== undefined
+                  ? marker.normalizedLatitude
+                  : this.normalizeCoordinates(marker.latitude, marker.longitude)
+                      .latitude,
+              longitude:
+                marker.normalizedLongitude !== undefined
+                  ? marker.normalizedLongitude
+                  : this.normalizeCoordinates(marker.latitude, marker.longitude)
+                      .longitude,
+              title: marker.name || marker.title,
+              description: marker.description || "Описание метки",
             };
 
-            let markerId = marker.id;
+            console.log(
+              `Данные для обновления маркера ${markerId}:`,
+              markerData
+            );
 
-            // Если у маркера нет ID или ID локальный, создаем новый
-            if (!markerId || markerId.toString().startsWith("local_")) {
+            // Проверяем, является ли маркер временным (локальным)
+            if (markerId.toString().startsWith("local_")) {
+              // Создаем новый маркер на сервере
               try {
-                // Создаем маркер
                 const markerResponse = await api.post("/markers/", {
                   ...markerData,
                   map_id: mapId,
                 });
 
-                if (markerResponse.data) {
-                  const newMarker = markerResponse.data;
-                  markerId = newMarker.marker_id;
-                  marker.id = markerId; // Обновляем ID маркера
-                  console.log(
-                    `Создан новый маркер ${markerId} для карты ${mapId}`
-                  );
-
-                  // Добавляем маркер в коллекцию
-                  const addToCollectionResponse = await api.post(
-                    `/collections/${collectionId}/markers`,
-                    {
-                      marker_id: markerId,
-                    }
-                  );
-
-                  if (!addToCollectionResponse.data) {
-                    console.warn(
-                      `Не удалось добавить маркер ${markerId} в коллекцию ${collectionId}`
-                    );
-                  } else {
-                    console.log(
-                      `Маркер ${markerId} успешно добавлен в коллекцию ${collectionId}`
-                    );
-                  }
-
-                  // Создаем статью для маркера
-                  if (marker.markdownContent) {
-                    const articleResponse = await api.post(
-                      `/markers/${markerId}/article`,
-                      {
-                        markdown_content: marker.markdownContent,
-                      }
-                    );
-
-                    if (!articleResponse.data) {
-                      console.warn(
-                        `Не удалось создать статью для маркера ${markerId}`
-                      );
-                    } else {
-                      console.log(
-                        `Статья для маркера ${markerId} успешно создана`
-                      );
-                    }
-                  }
-                } else {
-                  throw new Error("Ошибка при создании маркера: ответ пуст");
+                if (!markerResponse.data) {
+                  console.warn("Не удалось создать новый маркер");
+                  continue;
                 }
+
+                const newMarkerId = markerResponse.data.marker_id;
+                console.log(`Создан новый маркер с ID ${newMarkerId}`);
+
+                // Добавляем маркер в коллекцию
+                const addToCollectionResponse = await api.post(
+                  `/collections/${categoryId}/markers`,
+                  {
+                    marker_id: newMarkerId,
+                  }
+                );
+
+                if (!addToCollectionResponse.data) {
+                  console.warn(
+                    `Не удалось добавить маркер ${newMarkerId} в коллекцию ${categoryId}`
+                  );
+                }
+
+                // Создаем статью для маркера, если есть markdown-контент
+                if (marker.markdownContent) {
+                  const articleResponse = await api.post(
+                    `/markers/${newMarkerId}/article`,
+                    {
+                      markdown_content: marker.markdownContent,
+                    }
+                  );
+
+                  if (!articleResponse.data) {
+                    console.warn(
+                      `Не удалось создать статью для маркера ${newMarkerId}`
+                    );
+                  }
+                }
+
+                // Обновляем ID маркера в локальном состоянии
+                marker.id = newMarkerId;
+                marker.marker_id = newMarkerId;
+                delete marker.isNew;
               } catch (error) {
                 console.error("Ошибка при создании маркера:", error);
-                continue;
               }
             } else {
               // Обновляем существующий маркер
@@ -2661,6 +2664,13 @@ export default {
           lng: x,
         });
 
+        // Нормализуем координаты для хранения в БД
+        const normalizedCoords = this.normalizeCoordinates(y, x);
+        console.log(
+          `Нормализованные координаты для маркера ${markerId}:`,
+          normalizedCoords
+        );
+
         // Обновляем координаты маркера в каждой категории, где он может находиться
         for (const category of this.categories) {
           const marker = category.markers.find(
@@ -2668,10 +2678,14 @@ export default {
           );
 
           if (marker) {
-            // Обновляем координаты в объекте маркера
+            // Сохраняем исходные координаты для отображения на карте
             marker.latitude = y;
             marker.longitude = x;
             marker.position = [y, x];
+
+            // Добавляем нормализованные координаты для отправки на сервер
+            marker.normalizedLatitude = normalizedCoords.latitude;
+            marker.normalizedLongitude = normalizedCoords.longitude;
 
             console.log(
               `Обновлены координаты маркера ${markerId} в категории ${category.name}`

@@ -159,6 +159,12 @@ import { removeMarkerFromCollection } from "@/services/collections";
 import { api } from "@/api";
 import MapSidebar from "@/components/MapSidebar.vue";
 import { EventBus } from "@/services/eventBus";
+import { PermissionChecker } from "@/utils/permissions";
+import { API_URL } from "@/api";
+import AddCollectionForm from "@/components/AddCollectionForm.vue";
+import AddBlockMenu from "@/components/AddBlockMenu.vue";
+import { uuid } from "@/utils/uuid";
+import { markerOperationsMixin } from "@/mixins/markerOperations";
 
 // Определение URL API сервера из переменных окружения
 const API_URL = process.env.VUE_APP_API_URL || "http://localhost:8000";
@@ -167,12 +173,14 @@ console.log("MapView использует API URL:", API_URL);
 export default {
   name: "MapView",
   components: {
+    AddCollectionForm,
+    AddBlockMenu,
+    BlockEditor,
     MarkerEditor,
-    AppHeader,
-    ContextMenu,
     EditCollectionColor,
-    MapSidebar,
+    BlockRenderer,
   },
+  mixins: [markerOperationsMixin],
   data() {
     return {
       map: null,
@@ -1531,65 +1539,66 @@ export default {
 
       if (markerIndex !== -1) {
         try {
-          // Получаем текущий токен из cookies
-          const token = Cookies.get("access_token");
-          if (!token) {
-            console.error("Ошибка авторизации: токен отсутствует");
-            return false;
-          }
-
-          // Обновляем локальные данные маркера
+          // Клонируем маркер и обновляем его данные
           const updatedMarker = {
             ...this.currentCategory.markers[markerIndex],
             name: updatedMarkerData.name,
-            blocks: updatedMarkerData.blocks,
-            markdownContent: updatedMarkerData.markdownContent,
+            description: updatedMarkerData.description,
+            position: updatedMarkerData.position,
           };
 
-          const isLocal = this.isLocalMarker(updatedMarker.id);
-          console.log("Маркер локальный?", isLocal);
-
-          if (isLocal) {
-            // Маркер локальный, создаем его на сервере
-            console.log(
-              "Создаем новый маркер на сервере для локального маркера"
-            );
+          if (this.isLocalMarker(updatedMarker.id)) {
+            // Это локальный маркер, нужно сохранить его на сервер
+            console.log("Сохраняем новый маркер на сервере:", updatedMarker);
             try {
-              const response = await fetch(`${API_URL}/markers/`, {
+              // Получаем токен для запроса
+              const token = Cookies.get("access_token");
+              if (!token) {
+                console.error("Токен не найден");
+                return false;
+              }
+
+              // Нормализуем координаты перед отправкой
+              const normalizedCoords = this.normalizeCoordinates(
+                updatedMarker.position[0],
+                updatedMarker.position[1]
+              );
+              console.log("Исходные координаты:", {
+                latitude: updatedMarker.position[0],
+                longitude: updatedMarker.position[1],
+              });
+              console.log(
+                "Нормализованные координаты для сохранения:",
+                normalizedCoords
+              );
+
+              // Создаем новый маркер
+              const createResponse = await fetch(`${API_URL}/markers/`, {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
                   Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify({
-                  latitude: updatedMarker.position[0],
-                  longitude: updatedMarker.position[1],
+                  latitude: normalizedCoords.latitude,
+                  longitude: normalizedCoords.longitude,
                   title: updatedMarker.name,
-                  description: "Краткое описание маркера",
+                  description: updatedMarker.description || "",
                   map_id: this.$route.params.id,
                 }),
               });
 
-              if (!response.ok) {
-                const errorText = await response.text();
-                console.error("Ошибка при создании маркера:", errorText);
-                return false;
+              if (!createResponse.ok) {
+                throw new Error(
+                  `Ошибка при создании маркера: ${await createResponse.text()}`
+                );
               }
 
-              const createdMarker = await response.json();
-              console.log("Маркер успешно создан на сервере:", createdMarker);
-
-              // Обновляем id маркера в локальном хранилище
-              updatedMarker.id = createdMarker.marker_id;
-              this.currentCategory.markers[markerIndex].id =
-                createdMarker.marker_id;
+              const newMarker = await createResponse.json();
+              console.log("Получен ответ от сервера:", newMarker);
 
               // Добавляем маркер в коллекцию
-              console.log(
-                "Добавляем маркер в коллекцию:",
-                this.currentCategory.id
-              );
-              const addToCollectionResponse = await fetch(
+              const addResponse = await fetch(
                 `${API_URL}/collections/${this.currentCategory.id}/markers`,
                 {
                   method: "POST",
@@ -1598,46 +1607,28 @@ export default {
                     Authorization: `Bearer ${token}`,
                   },
                   body: JSON.stringify({
-                    marker_id: createdMarker.marker_id,
+                    marker_id: newMarker.marker_id,
                   }),
                 }
               );
 
-              if (!addToCollectionResponse.ok) {
+              if (!addResponse.ok) {
                 console.warn(
-                  "Не удалось добавить маркер в коллекцию:",
-                  await addToCollectionResponse.text()
+                  "Ошибка при добавлении маркера в коллекцию:",
+                  await addResponse.text()
                 );
-              } else {
-                console.log("Маркер успешно добавлен в коллекцию");
               }
 
-              // Создаем статью для нового маркера
-              console.log("Создаем статью для маркера");
-              const articleResponse = await fetch(
-                `${API_URL}/markers/${createdMarker.marker_id}/article`,
-                {
-                  method: "POST",
-                  headers: {
-                    "Content-Type": "application/json",
-                    Authorization: `Bearer ${token}`,
-                  },
-                  body: JSON.stringify({
-                    markdown_content: updatedMarker.markdownContent,
-                  }),
-                }
+              // Обновляем ID маркера
+              updatedMarker.id = newMarker.marker_id;
+
+              // Создаем статью для маркера
+              await this.createMarkerArticle(
+                updatedMarker.id,
+                updatedMarker.description
               );
 
-              if (!articleResponse.ok) {
-                console.error(
-                  "Ошибка при создании статьи маркера:",
-                  await articleResponse.text()
-                );
-              } else {
-                console.log("Статья для маркера успешно создана");
-              }
-
-              // Обновляем маркер в интерфейсе
+              // Обновляем маркер в массиве
               this.currentCategory.markers[markerIndex] = updatedMarker;
               this.renderMarkers();
               return true;
@@ -1652,6 +1643,27 @@ export default {
               updatedMarker.id
             );
             try {
+              // Получаем токен для запроса
+              const token = Cookies.get("access_token");
+              if (!token) {
+                console.error("Токен не найден");
+                return false;
+              }
+
+              // Нормализуем координаты перед отправкой
+              const normalizedCoords = this.normalizeCoordinates(
+                updatedMarker.position[0],
+                updatedMarker.position[1]
+              );
+              console.log("Исходные координаты:", {
+                latitude: updatedMarker.position[0],
+                longitude: updatedMarker.position[1],
+              });
+              console.log(
+                "Нормализованные координаты для обновления:",
+                normalizedCoords
+              );
+
               // Обновляем основные данные маркера
               const response = await fetch(
                 `${API_URL}/markers/${updatedMarker.id}`,
@@ -1662,8 +1674,8 @@ export default {
                     Authorization: `Bearer ${token}`,
                   },
                   body: JSON.stringify({
-                    latitude: updatedMarker.position[0],
-                    longitude: updatedMarker.position[1],
+                    latitude: normalizedCoords.latitude,
+                    longitude: normalizedCoords.longitude,
                     title: updatedMarker.name,
                   }),
                 }
@@ -1690,22 +1702,21 @@ export default {
                     Authorization: `Bearer ${token}`,
                   },
                   body: JSON.stringify({
-                    markdown_content: updatedMarker.markdownContent,
+                    markdown_content: updatedMarker.description || "",
                   }),
                 }
               );
 
               if (!articleResponse.ok) {
-                console.error(
+                console.warn(
                   "Ошибка при обновлении статьи маркера:",
                   await articleResponse.text()
                 );
-                return false;
+              } else {
+                console.log("Статья маркера успешно обновлена");
               }
 
-              console.log("Статья маркера успешно обновлена");
-
-              // Обновляем маркер в интерфейсе
+              // Обновляем маркер в массиве
               this.currentCategory.markers[markerIndex] = updatedMarker;
               this.renderMarkers();
               return true;
@@ -1715,11 +1726,11 @@ export default {
             }
           }
         } catch (error) {
-          console.error("Общая ошибка при сохранении маркера:", error);
+          console.error("Ошибка при обновлении маркера:", error);
           return false;
         }
       } else {
-        console.error("Маркер не найден в категории");
+        console.error("Маркер не найден в текущей категории");
         return false;
       }
     },
@@ -2833,6 +2844,18 @@ export default {
       }
 
       try {
+        // Нормализуем координаты перед отправкой
+        const normalizedCoords = this.normalizeCoordinates(
+          marker.position[0],
+          marker.position[1]
+        );
+        console.log(`Маркер ${marker.id}: нормализуем координаты.`);
+        console.log("Исходные координаты:", {
+          latitude: marker.position[0],
+          longitude: marker.position[1],
+        });
+        console.log("Нормализованные координаты:", normalizedCoords);
+
         const response = await fetch(`${API_URL}/markers/${marker.id}`, {
           method: "PUT",
           headers: {
@@ -2841,13 +2864,15 @@ export default {
           },
           body: JSON.stringify({
             title: marker.name,
-            latitude: marker.position[0],
-            longitude: marker.position[1],
+            latitude: normalizedCoords.latitude,
+            longitude: normalizedCoords.longitude,
           }),
         });
 
         if (!response.ok) {
           console.warn(`Не удалось обновить маркер ${marker.id} на сервере`);
+        } else {
+          console.log(`Маркер ${marker.id} успешно обновлен на сервере`);
         }
       } catch (error) {
         console.error(`Ошибка при обновлении маркера ${marker.id}:`, error);
