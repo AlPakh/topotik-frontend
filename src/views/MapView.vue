@@ -159,11 +159,7 @@ import { removeMarkerFromCollection } from "@/services/collections";
 import { api } from "@/api";
 import MapSidebar from "@/components/MapSidebar.vue";
 import { EventBus } from "@/services/eventBus";
-import { PermissionChecker } from "@/utils/permissions";
 import { API_URL } from "@/api";
-import AddCollectionForm from "@/components/AddCollectionForm.vue";
-import AddBlockMenu from "@/components/AddBlockMenu.vue";
-import { uuid } from "@/utils/uuid";
 import { markerOperationsMixin } from "@/mixins/markerOperations";
 
 // Логируем используемый API URL для отладки
