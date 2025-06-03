@@ -1553,86 +1553,73 @@ export default {
 
         // Сначала обновляем markdown-содержимое
         if (updatedMarkerData.markdownContent !== undefined) {
-          console.log(
-            "Сохранение Markdown:",
+          await this.saveMarkdownContent(
+            markerId,
             updatedMarkerData.markdownContent
           );
-
-          try {
-            // Обновляем статью маркера
-            await api.put(`/markers/${markerId}/article`, {
-              markdown_content: updatedMarkerData.markdownContent,
-            });
-
-            console.log("Статья для маркера успешно обновлена");
-          } catch (articleError) {
-            console.error(
-              "Ошибка при обновлении статьи маркера:",
-              articleError
-            );
-          }
         }
 
-        // Затем обновляем основные данные маркера, включая название
-        // Даем приоритет name над title, т.к. name - это то, что пользователь изменяет в интерфейсе
-        const name = updatedMarkerData.name || updatedMarkerData.title;
-
-        // Получаем координаты маркера
-        const rawLatitude =
-          updatedMarkerData.latitude || updatedMarkerData.position?.[0];
-        const rawLongitude =
-          updatedMarkerData.longitude || updatedMarkerData.position?.[1];
-
-        // Нормализуем координаты перед отправкой на сервер
-        const normalizedCoords = this.normalizeCoordinates(
-          rawLatitude,
-          rawLongitude
-        );
+        // Логируем исходные координаты для отладки
         console.log("Исходные координаты:", {
-          latitude: rawLatitude,
-          longitude: rawLongitude,
+          latitude: updatedMarkerData.latitude,
+          longitude: updatedMarkerData.longitude,
         });
+
+        // Нормализуем координаты для хранения в БД
+        const normalizedCoords = this.normalizeCoordinates(
+          updatedMarkerData.latitude,
+          updatedMarkerData.longitude
+        );
+
         console.log(
           "Нормализованные координаты для обновления:",
           normalizedCoords
         );
 
+        // Формируем данные для отправки на сервер
         const markerData = {
           latitude: normalizedCoords.latitude,
           longitude: normalizedCoords.longitude,
-          title: name, // Используем name в качестве title для сервера
-          description: updatedMarkerData.description || "Описание метки",
+          title: updatedMarkerData.name || updatedMarkerData.title,
+          description: updatedMarkerData.description || "",
         };
 
         console.log("Отправка данных маркера на сервер:", markerData);
 
+        // Отправляем запрос на обновление маркера
         const response = await api.put(`/markers/${markerId}`, markerData);
 
-        if (response.data) {
-          console.log("Маркер успешно обновлен:", response.data);
-
-          // Обновляем маркер в списке категорий
-          const updatedFields = {
-            ...updatedMarkerData,
-            title: name, // Убедимся, что title обновлен
-            name: name, // Убедимся, что name обновлен
-          };
-
-          this.updateMarkerInCategories(markerId, updatedFields);
-
-          // Перерисовываем маркеры на карте
-          this.renderMarkers();
-
-          // Сохраняем все изменения карты
-          this.saveMapData();
-
-          return true;
-        } else {
-          console.error("Ошибка при обновлении маркера");
-          return false;
+        if (!response.data) {
+          throw new Error("Не удалось обновить маркер");
         }
+
+        console.log("Маркер успешно обновлен:", response.data);
+
+        // Обновляем маркер в локальном состоянии
+        this.updateMarkerInCategories(markerId, {
+          name: updatedMarkerData.name,
+          title: updatedMarkerData.name,
+          latitude: updatedMarkerData.latitude, // Сохраняем пиксельные координаты для интерфейса
+          longitude: updatedMarkerData.longitude,
+          // Также сохраняем нормализованные координаты для последующей отправки на сервер
+          normalizedLatitude: normalizedCoords.latitude,
+          normalizedLongitude: normalizedCoords.longitude,
+          position: [updatedMarkerData.latitude, updatedMarkerData.longitude],
+          markdownContent: updatedMarkerData.markdownContent,
+          visible:
+            updatedMarkerData.visible !== undefined
+              ? updatedMarkerData.visible
+              : true,
+        });
+
+        // Закрываем редактор
+        this.currentMarker = null;
+        this.currentCategory = null;
+        this.showMarkerEditor = false;
+
+        return true;
       } catch (error) {
-        console.error("Ошибка при сохранении изменений маркера:", error);
+        console.error("Ошибка при обновлении маркера:", error);
         return false;
       }
     },
@@ -2586,14 +2573,33 @@ export default {
                 );
               }
 
+              // Денормализуем координаты из БД обратно в пиксельные для отображения на карте
+              console.log(
+                `Маркер ${marker.marker_id}: координаты из БД [${marker.latitude}, ${marker.longitude}]`
+              );
+
+              const pixelCoords = this.denormalizeCoordinates(
+                marker.latitude,
+                marker.longitude
+              );
+
+              console.log(
+                `Маркер ${marker.marker_id}: денормализованные координаты [${pixelCoords.latitude}, ${pixelCoords.longitude}]`
+              );
+
               category.markers.push({
                 id: marker.marker_id,
+                marker_id: marker.marker_id, // Добавляем дублирование для совместимости
                 name: marker.title || "Метка без названия",
                 visible: true,
-                position: [marker.latitude, marker.longitude],
-                // Добавляем оригинальные координаты для CustomMapView
-                latitude: marker.latitude,
-                longitude: marker.longitude,
+                // Используем денормализованные координаты для отображения на карте
+                position: [pixelCoords.latitude, pixelCoords.longitude],
+                // Храним оригинальные нормализованные координаты из БД
+                originalLatitude: marker.latitude,
+                originalLongitude: marker.longitude,
+                // Используем денормализованные координаты для работы с картой
+                latitude: pixelCoords.latitude,
+                longitude: pixelCoords.longitude,
                 blocks: blocks,
                 markdownContent: markdownContent,
               });
@@ -2672,13 +2678,14 @@ export default {
         );
 
         // Обновляем координаты маркера в каждой категории, где он может находиться
+        let updatedMarker = null;
         for (const category of this.categories) {
           const marker = category.markers.find(
             (m) => m.id === markerId || m.marker_id === markerId
           );
 
           if (marker) {
-            // Сохраняем исходные координаты для отображения на карте
+            // Сохраняем пиксельные координаты для отображения на карте
             marker.latitude = y;
             marker.longitude = x;
             marker.position = [y, x];
@@ -2687,6 +2694,9 @@ export default {
             marker.normalizedLatitude = normalizedCoords.latitude;
             marker.normalizedLongitude = normalizedCoords.longitude;
 
+            // Сохраняем ссылку на обновленный маркер
+            updatedMarker = marker;
+
             console.log(
               `Обновлены координаты маркера ${markerId} в категории ${category.name}`
             );
@@ -2694,8 +2704,29 @@ export default {
           }
         }
 
-        // Сохраняем изменения на сервере
-        this.saveMapData();
+        // Если маркер найден, отправляем изменения на сервер
+        if (updatedMarker) {
+          // Формируем данные для отправки на сервер
+          const markerData = {
+            latitude: normalizedCoords.latitude,
+            longitude: normalizedCoords.longitude,
+            title: updatedMarker.name || updatedMarker.title,
+            description: updatedMarker.description || "",
+          };
+
+          // Отправляем запрос на обновление маркера
+          api
+            .put(`/markers/${markerId}`, markerData)
+            .then(() => {
+              console.log(`Маркер ${markerId} успешно обновлен на сервере`);
+            })
+            .catch((error) => {
+              console.error(
+                `Ошибка при обновлении маркера ${markerId} на сервере:`,
+                error
+              );
+            });
+        }
       } catch (error) {
         console.error("Ошибка при обновлении позиции маркера:", error);
       }
@@ -2734,6 +2765,34 @@ export default {
         latitude: pixelLat,
         longitude: pixelLng,
       };
+    },
+
+    /**
+     * Обновление статьи маркера (markdown-содержимого)
+     * @param {string} markerId - ID маркера
+     * @param {string} markdownContent - содержимое статьи в формате markdown
+     * @returns {Promise<boolean>} - успешность операции
+     */
+    async saveMarkdownContent(markerId, markdownContent) {
+      console.log("Сохранение Markdown:", markdownContent);
+
+      try {
+        // Обновляем статью маркера
+        const response = await api.put(`/markers/${markerId}/article`, {
+          markdown_content: markdownContent,
+        });
+
+        if (response.data) {
+          console.log("Статья для маркера успешно обновлена");
+          return true;
+        } else {
+          console.warn(`Не удалось обновить статью для маркера ${markerId}`);
+          return false;
+        }
+      } catch (articleError) {
+        console.error("Ошибка при обновлении статьи маркера:", articleError);
+        return false;
+      }
     },
   },
 };
