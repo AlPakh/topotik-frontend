@@ -258,6 +258,41 @@ export default {
     }
   },
   methods: {
+    /**
+     * Нормализация координат для сохранения в базе данных
+     * Преобразует пиксельные координаты в диапазон, подходящий для БД (от -90 до 90)
+     * @param {number} latitude - широта (пиксельные координаты)
+     * @param {number} longitude - долгота (пиксельные координаты)
+     * @returns {Object} - нормализованные координаты {latitude, longitude}
+     */
+    normalizeCoordinates(latitude, longitude) {
+      // Ограничиваем значения диапазоном от -90 до 90 для широты и от -180 до 180 для долготы
+      // Просто масштабируем пиксельные координаты до географических
+      const normalizedLat = (latitude / 1000) * 90; // Масштабируем до диапазона -90 до 90
+      const normalizedLng = (longitude / 1000) * 180; // Масштабируем до диапазона -180 до 180
+
+      return {
+        latitude: parseFloat(normalizedLat.toFixed(6)),
+        longitude: parseFloat(normalizedLng.toFixed(6)),
+      };
+    },
+
+    /**
+     * Преобразование нормализованных координат обратно в пиксельные
+     * @param {number} lat - нормализованная широта
+     * @param {number} lng - нормализованная долгота
+     * @returns {Object} - пиксельные координаты {latitude, longitude}
+     */
+    denormalizeCoordinates(lat, lng) {
+      const pixelLat = (lat / 90) * 1000;
+      const pixelLng = (lng / 180) * 1000;
+
+      return {
+        latitude: pixelLat,
+        longitude: pixelLng,
+      };
+    },
+
     // Добавляем метод открытия модального окна шеринга через EventBus
     openShareModal() {
       EventBus.$emit("open-share-modal", {
@@ -1277,39 +1312,39 @@ export default {
           });
 
           try {
-            console.log("Отправляем запрос на создание метки на сервере...");
-            // Создаем маркер на сервере
-            const markerResponse = await fetch(`${API_URL}/markers/`, {
+            // Нормализуем координаты для сохранения в БД
+            const normalizedCoords = this.normalizeCoordinates(
+              position[0],
+              position[1]
+            );
+            console.log("Нормализованные координаты:", normalizedCoords);
+
+            // Создаем маркер на сервере с нормализованными координатами
+            const response = await fetch(`${API_URL}/markers/`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
                 Authorization: `Bearer ${Cookies.get("access_token")}`,
               },
               body: JSON.stringify({
-                latitude: position[0],
-                longitude: position[1],
+                latitude: normalizedCoords.latitude,
+                longitude: normalizedCoords.longitude,
                 title: defaultName,
                 description: "Описание метки",
                 map_id: mapId,
               }),
             });
 
-            console.log("Статус ответа сервера:", markerResponse.status);
-
-            if (!markerResponse.ok) {
+            if (!response.ok) {
               throw new Error(
-                `Ошибка при создании маркера: ${markerResponse.status}`
+                `Ошибка при создании маркера: ${response.status}`
               );
             }
 
-            const newMarker = await markerResponse.json();
-            console.log(
-              "Маркер успешно создан на сервере с ID:",
-              newMarker.marker_id
-            );
+            const newMarker = await response.json();
+            console.log("Маркер создан:", newMarker);
 
             // Добавляем маркер в коллекцию
-            console.log("Добавляем маркер в коллекцию", category.id);
             const addToCollectionResponse = await fetch(
               `${API_URL}/collections/${category.id}/markers`,
               {
@@ -1324,17 +1359,10 @@ export default {
               }
             );
 
-            console.log(
-              "Статус ответа на добавление в коллекцию:",
-              addToCollectionResponse.status
-            );
-
             if (!addToCollectionResponse.ok) {
               console.warn(
-                `Не удалось добавить маркер ${newMarker.marker_id} в коллекцию ${category.id}`
+                `Не удалось добавить маркер в коллекцию: ${addToCollectionResponse.status}`
               );
-            } else {
-              console.log("Маркер успешно добавлен в коллекцию");
             }
 
             // Создаем статью для маркера с базовым содержимым

@@ -2230,10 +2230,14 @@ export default {
           categoryId,
         });
 
-        // Создаем маркер на сервере
+        // Нормализуем координаты для сохранения в БД
+        const normalizedCoords = this.normalizeCoordinates(latitude, longitude);
+        console.log("Нормализованные координаты:", normalizedCoords);
+
+        // Создаем маркер на сервере с нормализованными координатами
         const markerResponse = await api.post("/markers/", {
-          latitude,
-          longitude,
+          latitude: normalizedCoords.latitude,
+          longitude: normalizedCoords.longitude,
           title,
           description: "Описание метки",
           map_id: mapId,
@@ -2681,6 +2685,41 @@ export default {
       } catch (error) {
         console.error("Ошибка при обновлении позиции маркера:", error);
       }
+    },
+
+    /**
+     * Нормализация координат для сохранения в базе данных
+     * Преобразует пиксельные координаты в диапазон, подходящий для БД (от -90 до 90)
+     * @param {number} latitude - широта (пиксельные координаты)
+     * @param {number} longitude - долгота (пиксельные координаты)
+     * @returns {Object} - нормализованные координаты {latitude, longitude}
+     */
+    normalizeCoordinates(latitude, longitude) {
+      // Ограничиваем значения диапазоном от -90 до 90 для широты и от -180 до 180 для долготы
+      // Просто масштабируем пиксельные координаты до географических
+      const normalizedLat = (latitude / 1000) * 90; // Масштабируем до диапазона -90 до 90
+      const normalizedLng = (longitude / 1000) * 180; // Масштабируем до диапазона -180 до 180
+
+      return {
+        latitude: parseFloat(normalizedLat.toFixed(6)),
+        longitude: parseFloat(normalizedLng.toFixed(6)),
+      };
+    },
+
+    /**
+     * Преобразование нормализованных координат обратно в пиксельные
+     * @param {number} lat - нормализованная широта
+     * @param {number} lng - нормализованная долгота
+     * @returns {Object} - пиксельные координаты {latitude, longitude}
+     */
+    denormalizeCoordinates(lat, lng) {
+      const pixelLat = (lat / 90) * 1000;
+      const pixelLng = (lng / 180) * 1000;
+
+      return {
+        latitude: pixelLat,
+        longitude: pixelLng,
+      };
     },
   },
 };

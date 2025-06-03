@@ -6,11 +6,34 @@ import { API_URL } from '@/api';
 
 export const markerOperationsMixin = {
     methods: {
+        /**
+         * Нормализация координат для сохранения в базе данных
+         * Преобразует пиксельные координаты в диапазон, подходящий для БД (от -90 до 90)
+         * @param {number} latitude - широта (пиксельные координаты)
+         * @param {number} longitude - долгота (пиксельные координаты)
+         * @returns {Object} - нормализованные координаты {latitude, longitude}
+         */
+        normalizeCoordinates(latitude, longitude) {
+            // Ограничиваем значения диапазоном от -90 до 90 для широты и от -180 до 180 для долготы
+            // Просто масштабируем пиксельные координаты до географических
+            const normalizedLat = (latitude / 1000) * 90; // Масштабируем до диапазона -90 до 90
+            const normalizedLng = (longitude / 1000) * 180; // Масштабируем до диапазона -180 до 180
+
+            return {
+                latitude: parseFloat(normalizedLat.toFixed(6)),
+                longitude: parseFloat(normalizedLng.toFixed(6))
+            };
+        },
+
         // Базовый метод создания маркера на сервере
         async createMarkerInCategory(latitude, longitude, categoryId, title = "Новая метка") {
             const mapId = this.$route.params.id;
 
             try {
+                // Нормализуем координаты для сохранения в БД
+                const normalizedCoords = this.normalizeCoordinates(latitude, longitude);
+                console.log("Нормализованные координаты:", normalizedCoords);
+
                 // Создаем маркер на сервере
                 const markerResponse = await fetch(`${API_URL}/markers/`, {
                     method: "POST",
@@ -19,8 +42,8 @@ export const markerOperationsMixin = {
                         Authorization: `Bearer ${Cookies.get("access_token")}`
                     },
                     body: JSON.stringify({
-                        latitude,
-                        longitude,
+                        latitude: normalizedCoords.latitude,
+                        longitude: normalizedCoords.longitude,
                         title,
                         description: "",
                         map_id: mapId
