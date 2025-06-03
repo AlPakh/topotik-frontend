@@ -166,19 +166,17 @@ import AddBlockMenu from "@/components/AddBlockMenu.vue";
 import { uuid } from "@/utils/uuid";
 import { markerOperationsMixin } from "@/mixins/markerOperations";
 
-// Определение URL API сервера из переменных окружения
-const API_URL = process.env.VUE_APP_API_URL || "http://localhost:8000";
+// Логируем используемый API URL для отладки
 console.log("MapView использует API URL:", API_URL);
 
 export default {
   name: "MapView",
   components: {
-    AddCollectionForm,
-    AddBlockMenu,
-    BlockEditor,
     MarkerEditor,
+    AppHeader,
+    ContextMenu,
     EditCollectionColor,
-    BlockRenderer,
+    MapSidebar,
   },
   mixins: [markerOperationsMixin],
   data() {
