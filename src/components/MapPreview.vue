@@ -1,5 +1,5 @@
 <template>
-  <div class="map-preview">
+  <div class="map-preview" :class="{ 'is-selected': selected }">
     <div class="map-thumbnail">
       <img v-if="hasBackgroundImage" :src="backgroundImageUrl" alt="Карта" />
       <div v-else class="no-image" :class="{ 'custom-map': isCustomMap }">
@@ -23,12 +23,15 @@
         >
           Открыть карту
         </button>
+        <button @click="shareMap" class="share-btn">Поделиться</button>
       </div>
     </div>
   </div>
 </template>
 
 <script>
+import { EventBus } from "@/services/eventBus";
+
 export default {
   name: "MapPreview",
   props: {
@@ -36,6 +39,9 @@ export default {
       type: Object,
       required: true,
     },
+  },
+  data() {
+    return {};
   },
   computed: {
     isCustomMap() {
@@ -218,6 +224,20 @@ export default {
       const mapId = this.map.map_id || this.map.id;
       this.$emit("open-map", mapId);
     },
+    shareMap() {
+      // Определяем ID карты (может быть как map_id, так и id)
+      const mapId = this.map.map_id || this.map.id;
+      console.log(
+        "MapPreview - Открытие модального окна шеринга для карты ID:",
+        mapId
+      );
+
+      EventBus.$emit("open-share-modal", {
+        resourceType: "map",
+        resourceId: mapId,
+        owner: null,
+      });
+    },
   },
 };
 </script>
@@ -232,7 +252,6 @@ export default {
 }
 
 .map-preview:hover {
-  transform: translateY(-3px);
   box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
 }
 
@@ -289,6 +308,11 @@ export default {
 
 .open-btn {
   background-color: #4a90e2;
+  color: white;
+}
+
+.share-btn {
+  background-color: #28a745;
   color: white;
 }
 

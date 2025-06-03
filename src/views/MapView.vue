@@ -21,6 +21,13 @@
       <div class="map-view">
         <div id="map" ref="mapContainer"></div>
 
+        <!-- Кнопка для шеринга карты -->
+        <div class="map-actions-panel">
+          <button class="share-button" @click="openShareModal">
+            Поделиться
+          </button>
+        </div>
+
         <!-- Панель создания элементов -->
         <div v-if="showCreatePanel" class="create-overlay">
           <div class="create-panel-wrapper">
@@ -64,6 +71,7 @@
               v-model="selectedCategoryId"
               @change="onCategorySelected"
             >
+              <option value="" disabled selected>Выберите категорию...</option>
               <option
                 v-for="category in categories"
                 :key="category.id"
@@ -150,6 +158,7 @@ import { getCollections } from "@/services/collections";
 import { removeMarkerFromCollection } from "@/services/collections";
 import { api } from "@/api";
 import MapSidebar from "@/components/MapSidebar.vue";
+import { EventBus } from "@/services/eventBus";
 
 // Определение URL API сервера из переменных окружения
 const API_URL = process.env.VUE_APP_API_URL || "http://localhost:8000";
@@ -196,6 +205,7 @@ export default {
       selectedContextType: null,
       showCategoryDialog: false,
       selectedCategoryId: null,
+      mapOwner: null,
     };
   },
   created() {
@@ -248,6 +258,15 @@ export default {
     }
   },
   methods: {
+    // Добавляем метод открытия модального окна шеринга через EventBus
+    openShareModal() {
+      EventBus.$emit("open-share-modal", {
+        resourceType: "map",
+        resourceId: this.$route.params.id,
+        owner: this.mapOwner,
+      });
+    },
+
     async initMap() {
       try {
         // Проверяем тип карты
@@ -442,9 +461,27 @@ export default {
       }
     },
 
-    loadMapData() {
+    async loadMapData() {
       try {
         const mapId = this.$route.params.id;
+
+        // Получаем данные о карте, включая владельца
+        try {
+          const mapDetails = await getMapById(mapId);
+          if (mapDetails) {
+            this.mapName =
+              mapDetails.title || mapDetails.name || "Карта без названия";
+            this.mapOwner = mapDetails.owner || null;
+            console.log(
+              "Данные карты загружены:",
+              this.mapName,
+              "владелец:",
+              this.mapOwner
+            );
+          }
+        } catch (err) {
+          console.warn("Не удалось получить данные карты:", err);
+        }
 
         // Загружаем коллекции маркеров для этой карты
         this.loadCollectionsFromServer(mapId);
@@ -1132,58 +1169,31 @@ export default {
     },
 
     createMarker() {
-      console.log(
-        'Метод createMarker() вызван - пользователь нажал на опцию "Метка на карте"'
-      );
-
-      // Закрываем панель создания сразу после выбора опции
-      this.showCreatePanel = false;
-
+      // Если категорий нет, предложим создать категорию
       if (this.categories.length === 0) {
-        console.warn("Нет доступных категорий для создания метки");
-        alert("Сначала создайте категорию");
+        alert("Сначала нужно создать категорию");
         return;
       }
 
-      // Если есть только одна категория, используем её
+      // Если есть только одна категория, автоматически выбираем её
       if (this.categories.length === 1) {
-        console.log(
-          "Доступна только одна категория, автоматически выбираем её:",
-          this.categories[0].name,
-          "(ID:",
-          this.categories[0].id,
-          ")"
-        );
         this.pendingMarkerCategory = this.categories[0].id;
-        alert("Кликните на карту, чтобы разместить метку");
-
-        // Изменяем курсор для режима добавления метки
-        document.getElementById("map").classList.add("adding-marker-mode");
-        console.log(
-          "Режим создания метки активирован (курсор изменен на крестик)"
-        );
-
-        // Добавляем обработчик правой кнопки мыши для отмены
-        document
-          .getElementById("map")
-          .addEventListener("contextmenu", this.cancelMarkerCreation);
-        console.log(
-          "Добавлен обработчик правой кнопки мыши для отмены создания метки"
-        );
-
+        alert("Нажмите на карту, чтобы создать метку");
         return;
       }
 
-      console.log("Доступно несколько категорий, показываем диалог выбора");
-
-      // Показываем диалог выбора категории
-      this.selectedCategoryId = this.categories[0].id; // По умолчанию выбираем первую категорию
+      // Иначе показываем диалог выбора категории
+      this.selectedCategoryId = ""; // Устанавливаем пустое значение для плейсхолдера
       this.showCategoryDialog = true;
     },
 
     onCategorySelected() {
-      if (!this.selectedCategoryId) return;
+      if (!this.selectedCategoryId) {
+        alert("Пожалуйста, выберите категорию из списка!");
+        return;
+      }
 
+      // Определяем выбранную категорию
       const selectedCategory = this.categories.find(
         (c) => c.id === this.selectedCategoryId
       );
@@ -1196,24 +1206,15 @@ export default {
         ")"
       );
 
+      // Сохраняем выбранную категорию
       this.pendingMarkerCategory = this.selectedCategoryId;
+
+      // Закрываем диалог
       this.showCategoryDialog = false;
 
-      alert("Кликните на карту, чтобы разместить метку");
-
-      // Изменяем курсор для режима добавления метки
+      // Изменяем курсор и показываем инструкции
       document.getElementById("map").classList.add("adding-marker-mode");
-      console.log(
-        "Режим создания метки активирован (курсор изменен на крестик)"
-      );
-
-      // Добавляем обработчик правой кнопки мыши для отмены
-      document
-        .getElementById("map")
-        .addEventListener("contextmenu", this.cancelMarkerCreation);
-      console.log(
-        "Добавлен обработчик правой кнопки мыши для отмены создания метки"
-      );
+      alert("Нажмите на карту, чтобы создать метку");
     },
 
     closeCategoryDialog() {
@@ -2858,3 +2859,31 @@ export default {
 
 <style scoped src="@/assets/css/views/MapView.css"></style>
 <style scoped src="@/assets/css/components/MapSidebar.css"></style>
+<style scoped>
+.map-actions-panel {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  z-index: 500;
+  display: flex;
+  gap: 10px;
+}
+
+.share-button {
+  background-color: #4a90e2;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 15px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.share-button:hover {
+  background-color: #3a80d2;
+}
+</style>

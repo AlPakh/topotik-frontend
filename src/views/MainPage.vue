@@ -37,7 +37,10 @@
                   :pathItems="getPathToItem(selectedItem.id)"
                   @navigate="handleBreadcrumbNavigation"
                 />
-                <switch-view @switchView="viewMode = $event" />
+                <switch-view
+                  @switchView="viewMode = $event"
+                  :activeView="viewMode"
+                />
               </div>
               <folder-content-view
                 :items="selectedItem.children"
@@ -45,6 +48,9 @@
                 @selectItem="handleSelectItem"
                 @moveItem="handleMoveItem"
                 @createNew="handleCreateNew"
+                @renameItem="handleRenameItem"
+                @deleteItem="confirmDeleteItem"
+                @shareItem="handleShareItem"
               />
             </div>
           </div>
@@ -147,6 +153,7 @@ import AppHeader from "@/components/AppHeader.vue";
 import MapPreview from "@/components/MapPreview.vue";
 import ImageUploader from "@/components/ImageUploader.vue";
 import BreadcrumbsNavigation from "@/components/Breadcrumbs.vue";
+import { EventBus } from "@/services/eventBus";
 import {
   getFolderStructure,
   createMap,
@@ -214,11 +221,8 @@ export default {
     // Загружаем структуру папок и карт при создании компонента
     const loadSuccess = await this.loadFolderStructure();
 
-    // Пытаемся восстановить последнюю выбранную папку
-    if (loadSuccess) {
-      await this.tryRestoreLastFolder();
-    } else {
-      // После загрузки структуры выбираем корневую папку
+    // После загрузки структуры выбираем корневую папку, если не удалось загрузить данные
+    if (!loadSuccess) {
       this.selectRootFolder();
     }
 
@@ -227,6 +231,11 @@ export default {
       "app:showRootDirectory",
       this.handleShowRootDirectory
     );
+  },
+  async mounted() {
+    // Пытаемся восстановить последнюю выбранную папку
+    // В mounted DOM уже отрендерен, поэтому refs доступны
+    await this.tryRestoreLastFolder();
   },
   methods: {
     // Обработчик глобального события для перехода к корневому каталогу
@@ -315,7 +324,14 @@ export default {
 
           // И раскрываем путь к ней в левой панели
           this.$nextTick(() => {
-            this.$refs.leftSidebar.expandPathToFolder(lastFolder.id);
+            // Добавляем проверку на существование ссылки перед вызовом метода
+            if (this.$refs.leftSidebar) {
+              this.$refs.leftSidebar.expandPathToFolder(lastFolder.id);
+            } else {
+              console.warn(
+                "Ссылка на leftSidebar не доступна. Путь не будет раскрыт автоматически."
+              );
+            }
           });
         } else {
           // Если папки нет, показываем сообщение и выбираем корневую
@@ -1229,6 +1245,21 @@ export default {
     handleOpenMap(mapId) {
       console.log("MainPage - Запрос на открытие карты с ID:", mapId);
       this.navigateToMap(mapId);
+    },
+
+    // Новый метод для обработки события "share-item"
+    handleShareItem(item) {
+      console.log(
+        "MainPage - Запрос на обработку события share-item для элемента:",
+        item
+      );
+
+      // Используем EventBus для открытия модального окна шаринга
+      EventBus.$emit("open-share-modal", {
+        resourceType: item.type === "map" ? "map" : "collection",
+        resourceId: item.id,
+        owner: null, // Владельца можно получить через API при необходимости
+      });
     },
   },
 

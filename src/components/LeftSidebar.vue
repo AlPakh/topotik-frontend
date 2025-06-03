@@ -22,6 +22,8 @@
         @moveItem="$emit('moveItem', $event)"
         @renameItem="$emit('renameItem', $event)"
         @deleteItem="$emit('deleteItem', $event)"
+        @shareItem="$emit('shareItem', $event)"
+        @contextMenu="$emit('contextMenu', $event)"
         @folderToggled="handleFolderToggled"
         :ref="
           (el) => {

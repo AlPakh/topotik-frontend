@@ -30,6 +30,14 @@
           >
             <span>Экспорт в MD</span>
           </button>
+          <button
+            v-if="canShare"
+            class="share-button"
+            @click="openShareModal"
+            title="Поделиться"
+          >
+            <span>Поделиться</span>
+          </button>
         </div>
       </div>
       <button class="close-button" @click="saveAndClose">&times;</button>
@@ -479,15 +487,26 @@
         </div>
       </div>
     </div>
+
+    <!-- Добавляем модальное окно шеринга -->
+    <ShareModal
+      v-if="showShareModal"
+      resourceType="map"
+      :resourceId="mapId"
+      :owner="null"
+      @close="showShareModal = false"
+    />
   </div>
 </template>
 
-
-
-
 <script>
+import ShareModal from "@/components/ShareModal.vue";
+
 export default {
   name: "MarkerEditor",
+  components: {
+    ShareModal,
+  },
   props: {
     marker: {
       type: Object,
@@ -500,6 +519,14 @@ export default {
     parentWidth: {
       type: Number,
       default: window.innerWidth,
+    },
+    isOwner: {
+      type: Boolean,
+      default: false,
+    },
+    hasEditAccess: {
+      type: Boolean,
+      default: false,
     },
   },
   data() {
@@ -520,13 +547,13 @@ export default {
       markdownContent: "",
       showAlertTypesMenu: false,
       submenuTimeout: null,
-      // Добавляем переменные для изменения размера
       isResizing: false,
       editorWidth: 400,
       startX: 0,
       startWidth: 400,
-      saveTimer: null, // Таймер для отложенного сохранения
-      inputTimeout: null, // Таймер для дебаунса ввода текста
+      saveTimer: null,
+      inputTimeout: null,
+      showShareModal: false,
     };
   },
   computed: {
@@ -540,11 +567,16 @@ export default {
           return "контент";
       }
     },
+    canShare() {
+      return this.isOwner || this.hasEditAccess;
+    },
+    mapId() {
+      return this.localMarker?.map_id || null;
+    },
   },
   mounted() {
     document.addEventListener("click", this.handleOutsideClick);
 
-    // Проверяем, есть ли markdownContent в маркере и конвертируем его в блоки при необходимости
     if (
       this.localMarker.markdownContent &&
       (!this.localMarker.blocks || this.localMarker.blocks.length === 0)
@@ -560,39 +592,29 @@ export default {
       !this.localMarker.blocks ||
       this.localMarker.blocks.length === 0
     ) {
-      // Если ни markdownContent, ни blocks нет, создаем пустой блок
       this.localMarker.blocks = [{ type: "text", content: "" }];
     }
 
-    // Конвертируем имеющиеся блоки в markdown при монтировании
     this.updateMarkdownContent();
 
-    // Гарантированно применяем autoGrow после полной загрузки DOM
     this.$nextTick(() => {
       this.resizeAllTextareas();
-
-      // Установка фокуса на последний блок
       this.focusLastBlock();
     });
 
-    // Добавляем обработчики для изменения размера
     document.addEventListener("mousemove", this.handleMouseMove);
     document.addEventListener("mouseup", this.handleMouseUp);
 
-    // Рассчитываем максимальную ширину
     this.calculateMaxWidth();
 
-    // Добавляем обработчик изменения размера окна
     window.addEventListener("resize", this.calculateMaxWidth);
   },
   watch: {
     marker: {
       handler(newMarker) {
         console.log("Маркер обновлен:", newMarker);
-        // Создаем глубокую копию маркера
         this.localMarker = JSON.parse(JSON.stringify(newMarker));
 
-        // Проверяем, есть ли markdownContent в маркере и конвертируем его в блоки
         if (
           this.localMarker.markdownContent &&
           (!this.localMarker.blocks || this.localMarker.blocks.length === 0)
@@ -608,11 +630,9 @@ export default {
           !this.localMarker.blocks ||
           this.localMarker.blocks.length === 0
         ) {
-          // Если ни markdownContent, ни blocks нет, создаем пустой блок
           this.localMarker.blocks = [{ type: "text", content: "" }];
         }
 
-        // Обновляем все textarea после обновления данных
         this.$nextTick(() => {
           this.resizeAllTextareas();
         });
@@ -621,7 +641,6 @@ export default {
     },
   },
   updated() {
-    // Вызываем resize при обновлении компонента
     this.$nextTick(() => {
       this.resizeAllTextareas();
     });
@@ -631,33 +650,27 @@ export default {
     clearTimeout(this.menuMouseLeaveTimeout);
     clearTimeout(this.contextMenuMouseLeaveTimeout);
 
-    // Удаляем обработчики
     document.removeEventListener("mousemove", this.handleMouseMove);
     document.removeEventListener("mouseup", this.handleMouseUp);
     window.removeEventListener("resize", this.calculateMaxWidth);
 
-    // Очищаем таймер автосохранения при уничтожении компонента
     if (this.saveTimer) {
       clearTimeout(this.saveTimer);
     }
   },
   methods: {
     handleTitleInput(event) {
-      // Автоматически изменяем высоту поля заголовка при вводе
       this.autoGrow(event.target);
     },
 
     handleTitleKeyDown(event) {
-      // Отменяем действие Enter (перенос строки) в заголовке
       if (event.key === "Enter") {
         event.preventDefault();
       }
     },
 
     saveAndClose() {
-      // Сначала сохраняем изменения
       this.save();
-      // Затем закрываем редактор
       this.$emit("close");
     },
 
@@ -665,14 +678,11 @@ export default {
       this.saveWithDelay();
     },
 
-    // Метод для сохранения с небольшой задержкой
     saveWithDelay() {
-      // Очищаем предыдущий таймер, если он был установлен
       if (this.saveTimer) {
         clearTimeout(this.saveTimer);
       }
 
-      // Устанавливаем новый таймер с небольшой задержкой (300мс)
       this.saveTimer = setTimeout(() => {
         this.save();
       }, 300);
@@ -686,7 +696,6 @@ export default {
     },
 
     handleOutsideClick(event) {
-      // Закрываем контекстное меню при клике вне его
       if (this.showContextMenu) {
         const menu = document.querySelector(".context-menu");
         if (menu && !menu.contains(event.target)) {
@@ -695,7 +704,6 @@ export default {
         }
       }
 
-      // Закрываем меню типов блоков при клике вне его
       if (this.showBlockTypeMenu) {
         const menu = document.querySelector(".block-type-menu");
         if (menu && !menu.contains(event.target)) {
@@ -705,11 +713,9 @@ export default {
       }
     },
     onBlockFocus(index) {
-      // Сохраняем индекс активного блока
       this.hoveredBlockIndex = index;
       this.activeBlockIndex = index;
 
-      // Находим textarea элемент и применяем autoGrow
       this.$nextTick(() => {
         const textareas = document.querySelectorAll(".content-block textarea");
         if (textareas[index]) {
@@ -717,7 +723,6 @@ export default {
         }
       });
 
-      // Если это последний блок и он не пустой, добавляем новый пустой блок
       if (index === this.localMarker.blocks.length - 1) {
         const block = this.localMarker.blocks[index];
         if (
@@ -733,26 +738,22 @@ export default {
     },
     showAddBlockMenu(index, event) {
       event.stopPropagation();
-      this.closeAllMenus(); // Закрываем все меню перед открытием нового
+      this.closeAllMenus();
 
       this.blockTypeMenuIndex = index;
       this.showBlockTypeMenu = true;
 
-      // Позиционируем меню рядом с кнопкой
       const rect = event.target.getBoundingClientRect();
-      const menuHeight = 280; // Примерная высота меню
-      const menuWidth = 200; // Примерная ширина меню
+      const menuHeight = 280;
+      const menuWidth = 200;
 
-      // Проверяем, поместится ли меню снизу
       let top = rect.bottom + window.scrollY;
       let left = rect.left;
 
-      // Если меню не помещается снизу, показываем его сверху
       if (top + menuHeight > window.innerHeight) {
         top = rect.top + window.scrollY - menuHeight;
       }
 
-      // Если меню не помещается справа, показываем его слева
       if (left + menuWidth > window.innerWidth) {
         left = rect.right - menuWidth;
       }
@@ -763,16 +764,13 @@ export default {
       };
     },
     addNewBlock(type, index) {
-      // Создаем новый пустой блок
       const newBlock = {
         type,
         content: "",
       };
 
-      // Переменная для хранения индекса нового блока
       let newIndex = index;
 
-      // Если текущий блок пустой текстовый блок, заменяем его
       if (index < this.localMarker.blocks.length) {
         const currentBlock = this.localMarker.blocks[index];
         if (
@@ -789,15 +787,11 @@ export default {
         newIndex = this.localMarker.blocks.length - 1;
       }
 
-      // Добавляем две пустые строки после разделителя, если он последний
       if (type === "divider") {
-        // Проверяем, является ли разделитель последним блоком
         if (newIndex === this.localMarker.blocks.length - 1) {
-          // Добавляем две пустые текстовые строки
           this.localMarker.blocks.push({ type: "text", content: "" });
           this.localMarker.blocks.push({ type: "text", content: "" });
 
-          // Сразу устанавливаем фокус на первую пустую строку после разделителя
           this.$nextTick(() => {
             const textareas = document.querySelectorAll(
               ".content-block textarea"
@@ -809,7 +803,6 @@ export default {
           });
 
           this.showBlockTypeMenu = false;
-          // Проверяем наличие пустого блока в конце
           this.ensureEmptyBlockAtEnd();
           return;
         }
@@ -817,55 +810,43 @@ export default {
 
       this.showBlockTypeMenu = false;
 
-      // Фокусируемся на новом блоке и применяем autoGrow
       this.$nextTick(() => {
-        // Получаем все текстовые поля
         const elements = document.querySelectorAll(
           ".content-block textarea, .content-block input"
         );
 
-        // Определяем индекс элемента, на который нужно установить фокус
         let focusIndex;
 
         if (type === "divider") {
-          // Если добавлен разделитель, фокусируемся на следующем за ним блоке
           focusIndex =
             newIndex + 1 < this.localMarker.blocks.length
               ? newIndex + 1
               : newIndex;
         } else {
-          // Для всех остальных блоков устанавливаем фокус на сам добавленный блок
           focusIndex = newIndex;
         }
 
-        // Устанавливаем фокус на нужный элемент, если он существует
         if (elements[focusIndex]) {
           elements[focusIndex].focus();
           if (elements[focusIndex].tagName === "TEXTAREA") {
             this.autoGrow(elements[focusIndex]);
 
-            // Устанавливаем курсор в начало текстового поля
             elements[focusIndex].setSelectionRange(0, 0);
           }
         }
       });
 
-      // Проверяем наличие пустого блока в конце
       this.ensureEmptyBlockAtEnd();
     },
     checkEmptyBlock(index) {
       const block = this.localMarker.blocks[index];
 
-      // Проверяем, является ли блок последним
       if (index === this.localMarker.blocks.length - 1) {
-        // Создаем новый блок ТОЛЬКО если последний блок заполнен полностью
-        // и только при потере фокуса, а не при каждом вводе символа
         if (
           block.type === "text" &&
           block.content.trim() !== "" &&
           block.content.trim().length > 10
         ) {
-          // Добавляем порог для создания нового блока
           this.addNewBlock("text", index);
         }
       }
@@ -873,7 +854,6 @@ export default {
     handleKeyDown(event, index) {
       const block = this.localMarker.blocks[index];
 
-      // Обработка стрелок для навигации между блоками
       if (
         ["ArrowLeft", "ArrowUp", "ArrowRight", "ArrowDown"].includes(event.key)
       ) {
@@ -881,17 +861,14 @@ export default {
         const cursorPosition = textarea.selectionStart;
         const contentLength = textarea.value.length;
 
-        // Стрелка влево/вверх в начале блока - переход к концу предыдущего блока
         if (
           (event.key === "ArrowLeft" || event.key === "ArrowUp") &&
           cursorPosition === 0 &&
           index > 0
         ) {
-          // Проверяем предыдущий блок
           const prevIndex = index - 1;
           const prevBlock = this.localMarker.blocks[prevIndex];
 
-          // Если предыдущий блок - divider, пропускаем его
           if (prevBlock.type === "divider") {
             if (index > 1) {
               event.preventDefault();
@@ -909,8 +886,6 @@ export default {
             return;
           }
 
-          // Переход к предыдущему блоку
-          // Проверяем, что предыдущий блок содержит текстовое поле
           const textTypes = [
             "text",
             "heading1",
@@ -926,11 +901,9 @@ export default {
           if (textTypes.includes(prevBlock.type)) {
             event.preventDefault();
             this.$nextTick(() => {
-              // Используем правильный индекс для доступа к textarea
               const textareas = document.querySelectorAll(
                 ".content-block textarea"
               );
-              // Ищем textarea в предыдущем блоке
               let prevTextareaIndex = 0;
               let found = false;
 
@@ -953,17 +926,14 @@ export default {
           }
         }
 
-        // Стрелка вправо/вниз в конце блока - переход к началу следующего блока
         if (
           (event.key === "ArrowRight" || event.key === "ArrowDown") &&
           cursorPosition === contentLength &&
           index < this.localMarker.blocks.length - 1
         ) {
-          // Проверяем следующий блок
           const nextIndex = index + 1;
           const nextBlock = this.localMarker.blocks[nextIndex];
 
-          // Если следующий блок - divider, пропускаем его
           if (nextBlock.type === "divider") {
             if (index < this.localMarker.blocks.length - 2) {
               event.preventDefault();
@@ -980,7 +950,6 @@ export default {
             return;
           }
 
-          // Переход к следующему блоку
           const textTypes = [
             "text",
             "heading1",
@@ -999,7 +968,6 @@ export default {
               const textareas = document.querySelectorAll(
                 ".content-block textarea"
               );
-              // Ищем textarea в следующем блоке
               let nextTextareaIndex = 0;
               let found = false;
 
@@ -1021,29 +989,23 @@ export default {
         }
       }
 
-      // Обработка Backspace
       if (event.key === "Backspace") {
         const textarea = event.target;
         const cursorPosition = textarea.selectionStart;
 
-        // Если курсор находится в начале текста (позиция 0) и есть предыдущий блок
         if (cursorPosition === 0 && index > 0) {
           const prevBlock = this.localMarker.blocks[index - 1];
 
-          // Проверка, является ли предыдущий блок разделителем (divider)
           if (prevBlock.type === "divider") {
             event.preventDefault();
 
-            // Просто удаляем divider
             this.localMarker.blocks.splice(index - 1, 1);
 
-            // Обновляем автоматически высоту текущего блока
             this.$nextTick(() => {
               const textareas = document.querySelectorAll(
                 ".content-block textarea"
               );
               if (textareas[index - 1]) {
-                // Теперь индекс текущего блока уменьшился на 1
                 this.autoGrow(textareas[index - 1]);
               }
             });
@@ -1051,7 +1013,6 @@ export default {
             return;
           }
 
-          // Проверяем, что предыдущий блок может содержать текст
           if (
             [
               "text",
@@ -1064,20 +1025,14 @@ export default {
           ) {
             event.preventDefault();
 
-            // Сохраняем содержимое текущего блока
             const currentContent = block.content;
-            // Сохраняем содержимое предыдущего блока
             const prevContent = prevBlock.content;
-            // Определяем позицию курсора после объединения
             const newCursorPosition = prevContent.length;
 
-            // Объединяем содержимое блоков
             prevBlock.content = prevContent + currentContent;
 
-            // Удаляем текущий блок
             this.localMarker.blocks.splice(index, 1);
 
-            // Переносим фокус на предыдущий блок и устанавливаем курсор в место объединения
             this.$nextTick(() => {
               const textareas = document.querySelectorAll(
                 ".content-block textarea"
@@ -1092,13 +1047,11 @@ export default {
               }
             });
 
-            // Проверяем наличие пустого блока в конце
             this.ensureEmptyBlockAtEnd();
             return;
           }
         }
 
-        // Обработка Backspace в пустом блоке (оставляем существующую логику)
         if (
           (block.type === "text" ||
             block.type === "heading1" ||
@@ -1108,39 +1061,32 @@ export default {
             block.type === "list-item") &&
           block.content.trim() === ""
         ) {
-          // Не удаляем блок, если он единственный
           if (this.localMarker.blocks.length <= 1) {
             return;
           }
 
           event.preventDefault();
 
-          // Запоминаем предыдущий индекс для переноса фокуса
           const prevIndex = Math.max(0, index - 1);
 
-          // Удаляем текущий блок
           this.localMarker.blocks.splice(index, 1);
 
-          // Переносим фокус на предыдущий блок
           this.$nextTick(() => {
             const textareas = document.querySelectorAll(
               ".content-block textarea"
             );
             if (textareas[prevIndex]) {
               textareas[prevIndex].focus();
-              // Устанавливаем курсор в конец текста
               const len = textareas[prevIndex].value.length;
               textareas[prevIndex].setSelectionRange(len, len);
             }
           });
 
-          // Проверяем наличие пустого блока в конце
           this.ensureEmptyBlockAtEnd();
           return;
         }
       }
 
-      // Обработка Enter для создания нового блока
       if (event.key === "Enter" && !event.shiftKey) {
         event.preventDefault();
 
@@ -1149,20 +1095,15 @@ export default {
         const textBeforeCursor = block.content.substring(0, cursorPosition);
         const textAfterCursor = block.content.substring(cursorPosition);
 
-        // Обновляем текст текущего блока
         block.content = textBeforeCursor;
 
-        // Создаем новый блок с текстом после курсора
-        // Если текущий блок - элемент списка, создаем еще один элемент списка
         const newBlockType = block.type === "list-item" ? "list-item" : "text";
 
-        // Вставляем новый блок
         this.localMarker.blocks.splice(index + 1, 0, {
           type: newBlockType,
           content: textAfterCursor,
         });
 
-        // Переносим фокус на новый блок
         this.$nextTick(() => {
           const textareas = document.querySelectorAll(
             ".content-block textarea"
@@ -1174,7 +1115,6 @@ export default {
           }
         });
 
-        // Проверяем наличие пустого блока в конце
         this.ensureEmptyBlockAtEnd();
       }
     },
@@ -1192,20 +1132,17 @@ export default {
       this.dragOverIndex = null;
     },
     save() {
-      // Обновляем markdown-контент перед сохранением
       this.updateMarkdownContent();
 
-      // Создаем копию локального маркера для сохранения
       const markerToSave = {
         ...this.localMarker,
-        name: this.localMarker.name || "Метка без названия", // Обеспечиваем наличие имени
+        name: this.localMarker.name || "Метка без названия",
         markdownContent: this.localMarker.markdownContent,
         blocks: this.localMarker.blocks,
       };
 
       console.log("Сохраняем маркер:", markerToSave);
 
-      // Передаем данные родительскому компоненту
       this.$emit("save", markerToSave);
     },
     ensureEmptyBlockAtEnd() {
@@ -1213,13 +1150,10 @@ export default {
       if (lastBlockIndex >= 0) {
         const lastBlock = this.localMarker.blocks[lastBlockIndex];
 
-        // Если последний блок не является пустым текстовым блоком,
-        // добавляем новый пустой блок
         if (!(lastBlock.type === "text" && lastBlock.content.trim() === "")) {
           this.localMarker.blocks.push({ type: "text", content: "" });
         }
       } else {
-        // Если блоков нет, добавляем первый пустой блок
         this.localMarker.blocks.push({ type: "text", content: "" });
       }
     },
@@ -1227,27 +1161,23 @@ export default {
       event.stopPropagation();
       event.preventDefault();
 
-      this.closeAllMenus(); // Закрываем все меню перед открытием нового
+      this.closeAllMenus();
 
       this.showContextMenu = true;
 
-      // Позиционируем контекстное меню
-      const menuHeight = 100; // Примерная высота меню
-      const menuWidth = 150; // Примерная ширина меню
+      const menuHeight = 100;
+      const menuWidth = 150;
 
-      // Получаем координаты кнопки относительно контейнера
       const rect = event.target.getBoundingClientRect();
       const editorRect = this.$el.getBoundingClientRect();
 
       let top = rect.top - editorRect.top + rect.height;
       let left = rect.left - editorRect.left;
 
-      // Если меню не помещается снизу, показываем его сверху
       if (top + menuHeight > editorRect.height) {
         top = rect.top - editorRect.top - menuHeight;
       }
 
-      // Если меню не помещается справа, показываем его слева
       if (left + menuWidth > editorRect.width) {
         left = rect.right - editorRect.left - menuWidth;
       }
@@ -1286,29 +1216,23 @@ export default {
     },
     duplicateBlock() {
       if (this.activeItem && this.activeItemIndex !== null) {
-        // Создаем глубокую копию блока
         const blockCopy = JSON.parse(JSON.stringify(this.activeItem));
 
-        // Вставляем копию после оригинала
         this.localMarker.blocks.splice(this.activeItemIndex + 1, 0, blockCopy);
 
-        // Проверяем наличие пустого блока в конце
-        this.ensureEmptyBlockAtEnd();
+        this.showContextMenu = false;
       }
       this.showContextMenu = false;
     },
     deleteBlock() {
       if (this.activeItem && this.activeItemIndex !== null) {
-        // Не удаляем блок, если он единственный
         if (this.localMarker.blocks.length <= 1) {
           return;
         }
 
-        // Удаляем блок
         this.localMarker.blocks.splice(this.activeItemIndex, 1);
 
-        // Проверяем наличие пустого блока в конце
-        this.ensureEmptyBlockAtEnd();
+        this.showContextMenu = false;
       }
       this.showContextMenu = false;
     },
@@ -1319,7 +1243,6 @@ export default {
         this.deleteBlock();
       }
     },
-    // Преобразование блоков в Markdown
     updateMarkdownContent() {
       if (!this.localMarker.blocks || !this.localMarker.blocks.length) {
         this.markdownContent = "";
@@ -1327,17 +1250,14 @@ export default {
         return;
       }
 
-      // Преобразуем блоки в markdown
       const markdown = this.blocksToMarkdown(this.localMarker.blocks);
 
-      // Сохраняем markdown в свойствах
       this.markdownContent = markdown;
       this.localMarker.markdownContent = markdown;
 
       console.log("Markdown обновлен:", markdown);
     },
 
-    // Преобразование блоков в Markdown
     blocksToMarkdown(blocks) {
       if (!blocks || !blocks.length) return "";
 
@@ -1347,23 +1267,19 @@ export default {
 
       blocks.forEach((block) => {
         if (block.type === "list-item") {
-          // Накапливаем элементы списка
           listMode = true;
           if (block.content.trim() !== "") {
             listContents.push(`* ${block.content}`);
           }
         } else {
-          // Если до этого был список, выводим его и сбрасываем режим списка
           if (listMode && listContents.length > 0) {
             result.push(listContents.join("\n"));
             listContents = [];
             listMode = false;
           }
 
-          // Обрабатываем другие типы блоков
           switch (block.type) {
             case "text":
-              // Добавляем пустую строку для пустого текстового блока
               if (block.content.trim() === "") {
                 result.push("");
               } else {
@@ -1422,7 +1338,6 @@ export default {
         }
       });
 
-      // Не забываем про список в конце документа
       if (listMode && listContents.length > 0) {
         result.push(listContents.join("\n"));
       }
@@ -1430,14 +1345,11 @@ export default {
       return result.join("\n\n");
     },
 
-    // Преобразование Markdown в блоки
     markdownToBlocks(markdown) {
       if (!markdown) return [{ type: "text", content: "" }];
 
-      // Сохраняем все переносы строк, заменяя \n\n на специальный маркер
       let processedMarkdown = markdown.replace(/\n\n/g, "\n⚛\n");
 
-      // Разбиваем по строкам
       const lines = processedMarkdown.split("\n");
       const blocks = [];
 
@@ -1445,14 +1357,12 @@ export default {
       while (i < lines.length) {
         const line = lines[i];
 
-        // Обработка специального маркера - это означает пустую строку
         if (line === "⚛" || line.trim() === "" || line === "") {
           blocks.push({ type: "text", content: "" });
           i++;
           continue;
         }
 
-        // Заголовок 1 уровня
         if (line.trim().startsWith("# ")) {
           blocks.push({
             type: "heading1",
@@ -1462,7 +1372,6 @@ export default {
           continue;
         }
 
-        // Заголовок 2 уровня
         if (line.trim().startsWith("## ")) {
           blocks.push({
             type: "heading2",
@@ -1472,7 +1381,6 @@ export default {
           continue;
         }
 
-        // Заголовок 3 уровня
         if (line.trim().startsWith("### ")) {
           blocks.push({
             type: "heading3",
@@ -1482,7 +1390,6 @@ export default {
           continue;
         }
 
-        // Задача с чекбоксом
         const taskMatch = line.trim().match(/^-\s*\[([ xX])\]\s*(.+)$/);
         if (taskMatch) {
           blocks.push({
@@ -1494,7 +1401,6 @@ export default {
           continue;
         }
 
-        // Элемент маркированного списка (с дефисом)
         if (line.trim().startsWith("- ")) {
           blocks.push({
             type: "list-item",
@@ -1504,7 +1410,6 @@ export default {
           continue;
         }
 
-        // Элемент маркированного списка (со звездочкой)
         if (line.trim().startsWith("* ")) {
           blocks.push({
             type: "list-item",
@@ -1514,7 +1419,6 @@ export default {
           continue;
         }
 
-        // Элемент нумерованного списка
         const orderedListMatch = line.trim().match(/^(\d+)\.\s+(.+)$/);
         if (orderedListMatch) {
           blocks.push({
@@ -1526,14 +1430,12 @@ export default {
           continue;
         }
 
-        // Горизонтальная линия
         if (line.trim() === "---") {
           blocks.push({ type: "divider" });
           i++;
           continue;
         }
 
-        // Цитата
         if (line.trim().startsWith("> ")) {
           blocks.push({
             type: "quote",
@@ -1543,14 +1445,11 @@ export default {
           continue;
         }
 
-        // Обычный текст
-        // Собираем многострочный текст до следующего блока
         let textContent = line;
         let j = i + 1;
         while (j < lines.length) {
           const nextLine = lines[j];
 
-          // Если следующая строка - начало нового блока или специального маркера, прерываем сбор текста
           if (
             nextLine === "" ||
             nextLine === "⚛" ||
@@ -1580,7 +1479,6 @@ export default {
         i = j;
       }
 
-      // Добавляем пустой блок в конце, если нужно
       if (
         blocks.length === 0 ||
         blocks[blocks.length - 1].type !== "text" ||
@@ -1592,108 +1490,82 @@ export default {
       return blocks;
     },
 
-    // Экспорт содержимого в markdown файл
     exportMarkdown() {
-      // Обновляем markdown-контент перед экспортом
       this.updateMarkdownContent();
 
-      // Создаем файл для скачивания
       const fileName = `${this.localMarker.name.replace(/\s+/g, "_")}.md`;
       const blob = new Blob([this.markdownContent], { type: "text/markdown" });
       const url = URL.createObjectURL(blob);
 
-      // Создаем ссылку и эмулируем клик
       const a = document.createElement("a");
       a.href = url;
       a.download = fileName;
       document.body.appendChild(a);
       a.click();
 
-      // Очищаем ресурсы
       setTimeout(() => {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       }, 0);
     },
-    // Новая улучшенная функция для изменения всех textarea
     resizeAllTextareas() {
       const textareas = document.querySelectorAll(".form-textarea");
       textareas.forEach((textarea) => {
         this.autoGrow(textarea);
       });
     },
-    // Обработчик ввода в textarea
     handleTextareaInput(event) {
-      // Вызываем autoGrow после небольшой задержки для предотвращения частых вызовов
       if (this.inputTimeout) {
         clearTimeout(this.inputTimeout);
       }
 
       this.inputTimeout = setTimeout(() => {
         this.autoGrow(event.target);
-        // Убираем вызов checkEmptyBlock при каждом вводе символа
       }, 10);
     },
-    // Улучшенная функция autoGrow
     autoGrow(element) {
       if (!element) return;
 
-      // Сохраняем положение скролла
       const scrollPos =
         window.pageYOffset || document.documentElement.scrollTop;
 
-      // Клонируем стили для точного расчета
       const computedStyle = window.getComputedStyle(element);
       const lineHeight =
         parseFloat(computedStyle.lineHeight) ||
         parseInt(computedStyle.fontSize) * 1.2;
 
-      // Сначала сбрасываем высоту
       element.style.height = "0";
 
-      // Вычисляем высоту на основе содержимого
       const textHeight = element.scrollHeight;
 
-      // Подсчитываем количество строк по символам новой строки (+ 1 для последней строки)
-      // Используем строгий подход для предотвращения лишних переносов строк
       const lines = Math.max(1, (element.value.match(/\n/g) || []).length + 1);
 
-      // Рассчитываем точную высоту на основе количества строк и высоты строки
-      // Добавляем небольшой отступ для предотвращения обрезания текста
       const calculatedHeight = lines * lineHeight + 8;
 
-      // Используем большее из вычисленных значений для надежности
       const newHeight = Math.max(textHeight, calculatedHeight);
 
-      // Устанавливаем высоту
       element.style.height = `${newHeight}px`;
 
-      // Восстанавливаем положение скролла
       window.scrollTo(0, scrollPos);
     },
     handleTextareaBlur(index) {
-      // Снимаем метку активного блока
       if (this.activeBlockIndex === index) {
         this.activeBlockIndex = null;
       }
 
-      // Проверяем необходимость добавления нового блока при потере фокуса
       this.checkEmptyBlock(index);
 
-      // Автоматически сохраняем при потере фокуса
       this.saveWithDelay();
     },
     addAlertBlock(type, index) {
       this.showAlertTypesMenu = false;
       this.showBlockTypeMenu = false;
 
-      // Создаем новый блок уведомления
       const newBlock = {
         type,
         content: "",
       };
 
-      // Вставляем блок
       let newIndex = index;
       if (index < this.localMarker.blocks.length) {
         const currentBlock = this.localMarker.blocks[index];
@@ -1711,7 +1583,6 @@ export default {
         newIndex = this.localMarker.blocks.length - 1;
       }
 
-      // Фокусируемся на новом блоке
       this.$nextTick(() => {
         const textareas = document.querySelectorAll(".content-block textarea");
         if (textareas[newIndex]) {
@@ -1721,7 +1592,6 @@ export default {
         }
       });
 
-      // Проверяем наличие пустого блока в конце
       this.ensureEmptyBlockAtEnd();
     },
     showEmbedDialog(service, index) {
@@ -2043,11 +1913,12 @@ export default {
         }
       });
     },
+    openShareModal() {
+      this.showShareModal = true;
+    },
   },
 };
 </script>
-
-
 
 <style scoped src="@/assets/css/components/MarkerEditor.css">
 </style>

@@ -3,6 +3,7 @@
     <div
       class="item-line"
       @click="onSelectItem"
+      @contextmenu.prevent="onContextMenu"
       @mouseover="hovered = true"
       @mouseleave="handleMouseLeave"
       draggable="true"
@@ -48,6 +49,9 @@
         @mouseleave="menuHovered = false"
       >
         <button @click="renameItem">Переименовать</button>
+        <button v-if="item.type === 'map'" @click="shareItem">
+          Поделиться
+        </button>
         <button @click="deleteItem" class="delete-button">Удалить</button>
       </div>
     </div>
@@ -63,6 +67,8 @@
         @moveItem="handleMoveItem"
         @renameItem="$emit('renameItem', $event)"
         @deleteItem="$emit('deleteItem', $event)"
+        @shareItem="$emit('shareItem', $event)"
+        @contextMenu="$emit('contextMenu', $event)"
         @folderToggled="handleFolderToggled"
       />
     </ul>
@@ -162,6 +168,20 @@ export default {
   methods: {
     onSelectItem() {
       this.$emit("selectItem", this.item);
+    },
+    onContextMenu(event) {
+      // Открываем контекстное меню при правом клике
+      this.showMenu = true;
+
+      // Эмитим событие для родительского компонента с координатами и элементом
+      this.$emit("contextMenu", {
+        item: this.item,
+        x: event.clientX,
+        y: event.clientY,
+      });
+
+      // Предотвращаем стандартное контекстное меню
+      event.preventDefault();
     },
     toggleFolder() {
       this.localIsOpen = !this.localIsOpen;
@@ -284,6 +304,15 @@ export default {
           isOpen: true,
         });
       }
+    },
+    shareItem() {
+      this.showMenu = false;
+      // Эмитим событие для шаринга
+      this.$emit("shareItem", {
+        id: this.item.id,
+        type: this.item.type,
+        name: this.item.name,
+      });
     },
   },
   beforeUnmount() {

@@ -22,6 +22,13 @@
         <!-- Контейнер карты с пользовательским изображением -->
         <div id="map" class="map-container" ref="mapContainer"></div>
 
+        <!-- Кнопка для шеринга карты -->
+        <div class="map-actions-panel">
+          <button class="share-button" @click="openShareModal">
+            Поделиться
+          </button>
+        </div>
+
         <!-- Панель создания элементов -->
         <div v-if="showCreatePanel" class="create-overlay">
           <div class="create-panel-wrapper">
@@ -65,6 +72,7 @@
               v-model="selectedCategoryId"
               @change="onCategorySelected"
             >
+              <option value="" disabled selected>Выберите категорию...</option>
               <option
                 v-for="category in categories"
                 :key="category.id"
@@ -152,6 +160,7 @@ import Cookies from "js-cookie";
 import { getMapById } from "@/services/maps";
 import { moveMarkerBetweenCollections } from "@/services/collections";
 import { api } from "@/api";
+import { EventBus } from "@/services/eventBus";
 
 // Определение URL API сервера из переменных окружения
 const API_URL = process.env.VUE_APP_API_URL || "http://localhost:8000";
@@ -219,21 +228,33 @@ export default {
   },
 
   mounted() {
-    console.log("CustomMapView mounted - инициализация компонента");
-    document.addEventListener("click", this.handleOutsideClick);
+    // Инициализируем карту после монтирования компонента
     this.initMap();
+
+    // Удаляем этот вызов, так как он уже вызывается в методе initMap
+    // this.loadMapData();
+
+    // Добавляем обработчик клика вне контекстного меню
+    document.addEventListener("click", this.handleOutsideClick);
   },
 
   beforeUnmount() {
-    console.log("CustomMapView beforeUnmount - очистка компонента");
+    // Удаляем обработчики событий при уничтожении компонента
     document.removeEventListener("click", this.handleOutsideClick);
-    if (this.map) {
-      this.map.off();
-      this.map.remove();
-    }
   },
 
   methods: {
+    /**
+     * Открытие модального окна шеринга карты
+     */
+    openShareModal() {
+      EventBus.$emit("open-share-modal", {
+        resourceType: "map",
+        resourceId: this.$route.params.id,
+        owner: this.mapOwner,
+      });
+    },
+
     /**
      * Инициализация карты
      */
@@ -348,124 +369,115 @@ export default {
       try {
         const mapId = this.$route.params.id;
 
-        // Получаем данные карты с сервера через импортированный сервис
-        const mapData = await getMapById(mapId);
-
-        if (!mapData) {
-          console.error("Не удалось загрузить данные карты");
-          return;
-        }
-
-        // Устанавливаем название карты с проверкой на разные форматы данных
-        this.mapName =
-          mapData.title || mapData.name || "Пользовательская карта";
-        console.log(
-          "Установлено название пользовательской карты:",
-          this.mapName
-        );
-
-        // Загружаем фоновое изображение, если оно есть
-        if (mapData.background_image_url) {
-          this.loadMapImage(mapData.background_image_url);
-        } else {
-          console.warn("У карты нет фонового изображения");
-        }
-
-        // Загружаем категории (коллекции) и маркеры
-        const response = await api.get(`/collections/?map_id=${mapId}`);
-
-        if (!response.data) {
-          throw new Error(`Ошибка при загрузке коллекций`);
-        }
-
-        const collectionsData = response.data;
-
-        // Преобразуем коллекции в формат категорий для компонента
-        this.categories = [];
-
-        // Для каждой коллекции загружаем маркеры
-        for (const collection of collectionsData) {
-          try {
-            // Загружаем маркеры для коллекции
-            const markersResponse = await api.get(
-              `/collections/${collection.collection_id}/markers`
+        // Получаем данные о карте, включая владельца
+        try {
+          const mapDetails = await getMapById(mapId);
+          if (mapDetails) {
+            this.mapName =
+              mapDetails.title || mapDetails.name || "Пользовательская карта";
+            this.mapOwner = mapDetails.owner || null;
+            console.log(
+              "Данные карты загружены:",
+              this.mapName,
+              "владелец:",
+              this.mapOwner
             );
 
-            if (!markersResponse.data) {
-              console.error(
-                `Ошибка при загрузке маркеров для коллекции ${collection.collection_id}`
-              );
-              continue;
-            }
+            // Настраиваем фоновое изображение, если оно существует
+            if (
+              mapDetails.background_image_url &&
+              mapDetails.background_image_id
+            ) {
+              await this.setupBackgroundImage(mapDetails.background_image_url);
+            } else {
+              console.error("У карты отсутствует фоновое изображение");
 
-            const markers = markersResponse.data;
-
-            // Массив для хранения преобразованных маркеров
-            const processedMarkers = [];
-
-            // Для каждого маркера загружаем его статью (markdown-содержимое)
-            for (const marker of markers) {
-              // Базовая информация о маркере
-              const markerInfo = {
-                ...marker,
-                visible: true, // По умолчанию видимы
-                markdownContent: "", // Пустое содержимое по умолчанию
-              };
-
-              try {
-                // Загружаем статью маркера
-                const articleResponse = await api.get(
-                  `/markers/${marker.marker_id}/article`
-                );
-
-                if (
-                  articleResponse.data &&
-                  articleResponse.data.markdown_content !== undefined
-                ) {
-                  markerInfo.markdownContent =
-                    articleResponse.data.markdown_content;
-                  console.log(
-                    `Загружена статья для маркера ${marker.marker_id}`
-                  );
-                }
-              } catch (articleError) {
-                console.warn(
-                  `Не удалось загрузить статью для маркера ${marker.marker_id}:`,
-                  articleError
-                );
+              // Показываем сообщение об ошибке пользователю
+              const mapElement = this.$refs.mapContainer;
+              if (mapElement) {
+                mapElement.innerHTML = `
+                  <div class="error-message">
+                    <h3>Отсутствует фоновое изображение</h3>
+                    <p>Для этой карты не загружено фоновое изображение. Пожалуйста, загрузите изображение через настройки карты.</p>
+                  </div>
+                `;
+                mapElement.style.display = "flex";
+                mapElement.style.justifyContent = "center";
+                mapElement.style.alignItems = "center";
+                mapElement.style.backgroundColor = "#f5f5f5";
+                mapElement.style.padding = "20px";
+                mapElement.style.textAlign = "center";
+                mapElement.style.color = "#ff3333";
               }
 
-              processedMarkers.push(markerInfo);
+              // Прерываем дальнейшую загрузку
+              return;
             }
-
-            // Добавляем категорию с её маркерами
-            this.categories.push({
-              id: collection.collection_id,
-              name: collection.title,
-              color: collection.collection_color || "#8A2BE2", // Используем цвет коллекции или фиолетовый по умолчанию
-              expanded: true, // По умолчанию раскрыта
-              visible: true, // По умолчанию видима
-              markers: processedMarkers,
-            });
-          } catch (error) {
-            console.error(
-              `Ошибка при загрузке маркеров для коллекции ${collection.collection_id}:`,
-              error
-            );
           }
+        } catch (err) {
+          console.warn("Не удалось получить данные карты:", err);
         }
 
-        // Если категорий нет, создаем категорию "Без категории"
-        if (this.categories.length === 0) {
-          await this.createDefaultCategory(mapId);
-        }
+        // Загружаем коллекции маркеров для этой карты
+        this.loadCollectionsFromServer(mapId);
+      } catch (e) {
+        console.error("Ошибка при загрузке данных карты:", e);
+      }
+    },
 
-        // Отрисовываем маркеры на карте
-        this.renderMarkers();
+    /**
+     * Настройка фонового изображения карты
+     * @param {string} imageUrl - URL изображения
+     */
+    async setupBackgroundImage(imageUrl) {
+      try {
+        // Добавляем полный URL API, если в URL начинается с /
+        const fullImageUrl = imageUrl.startsWith("/")
+          ? `${API_URL}${imageUrl}`
+          : imageUrl;
+
+        console.log("Загружаем фоновое изображение из URL:", fullImageUrl);
+
+        // Создаем новый экземпляр Image для загрузки изображения
+        const img = new Image();
+
+        // Возвращаем Promise, который разрешается после загрузки изображения
+        await new Promise((resolve, reject) => {
+          img.onload = () => {
+            console.log(
+              "Изображение успешно загружено. Размер:",
+              img.width,
+              "x",
+              img.height
+            );
+
+            // Устанавливаем границы карты на основе размеров изображения
+            const southWest = this.map.unproject([0, img.height], 0);
+            const northEast = this.map.unproject([img.width, 0], 0);
+            const bounds = new L.LatLngBounds(southWest, northEast);
+
+            // Обновляем границы карты и устанавливаем фоновое изображение
+            this.map.setMaxBounds(bounds);
+
+            // Добавляем изображение на карту
+            L.imageOverlay(fullImageUrl, bounds).addTo(this.map);
+
+            // Центрируем карту и устанавливаем зум
+            this.map.fitBounds(bounds);
+
+            resolve();
+          };
+
+          img.onerror = (error) => {
+            console.error("Ошибка при загрузке изображения:", error);
+            reject(error);
+          };
+
+          // Начинаем загрузку изображения
+          img.src = fullImageUrl;
+        });
       } catch (error) {
-        console.error("Ошибка при загрузке данных:", error);
-        // В случае ошибки все равно создаем категорию "Без категории"
-        await this.createDefaultCategory(this.$route.params.id);
+        console.error("Ошибка при настройке фонового изображения:", error);
       }
     },
 
@@ -771,6 +783,8 @@ export default {
                 zIndexOffset: lat * 10,
                 riseOnHover: false,
                 riseOffset: 0,
+                // Включаем возможность перетаскивания маркера
+                draggable: true,
               });
 
               // Добавляем маркер на карту
@@ -815,6 +829,19 @@ export default {
                   this.openMarkerDetails(marker, category);
                 } catch (err) {
                   console.warn("Ошибка при обработке клика на маркер:", err);
+                }
+              });
+
+              // Добавляем обработчик окончания перетаскивания маркера
+              leafletMarker.on("dragend", () => {
+                try {
+                  const markerId = marker.id || marker.marker_id;
+                  this.updateMarkerPosition(leafletMarker, markerId);
+                } catch (err) {
+                  console.error(
+                    "Ошибка при обработке перетаскивания маркера:",
+                    err
+                  );
                 }
               });
 
@@ -917,8 +944,8 @@ export default {
 
           console.log("Режим создания метки деактивирован");
 
-          // Перезагружаем данные карты
-          await this.loadMapData();
+          // Сохраняем изменения
+          this.saveMapData();
         } catch (error) {
           console.error("Ошибка при создании маркера:", error);
           alert("Не удалось создать маркер. Повторите попытку позже.");
@@ -1110,6 +1137,9 @@ export default {
         });
 
         console.log(`Категория "${categoryName}" успешно создана`);
+
+        // Сохраняем данные карты
+        this.saveMapData();
       } catch (error) {
         console.error("Ошибка при создании категории:", error);
       }
@@ -1162,7 +1192,7 @@ export default {
       }
 
       // Отображаем диалог выбора категории
-      this.selectedCategoryId = this.categories[0].id;
+      this.selectedCategoryId = ""; // Устанавливаем пустое значение для плейсхолдера
       this.showCategoryDialog = true;
     },
 
@@ -1171,7 +1201,7 @@ export default {
      */
     onCategorySelected() {
       if (!this.selectedCategoryId) {
-        alert("Выберите категорию!");
+        alert("Пожалуйста, выберите категорию из списка!");
         return;
       }
 
@@ -1493,6 +1523,9 @@ export default {
 
         // Если нужно обновить цвета маркеров
         this.renderMarkers();
+
+        // Сохраняем изменения на сервере
+        this.saveMapData();
       }
 
       // Закрываем редактор цвета
@@ -1572,6 +1605,9 @@ export default {
           // Перерисовываем маркеры на карте
           this.renderMarkers();
 
+          // Сохраняем все изменения карты
+          this.saveMapData();
+
           return true;
         } else {
           console.error("Ошибка при обновлении маркера");
@@ -1619,45 +1655,185 @@ export default {
       try {
         const mapId = this.$route.params.id;
 
-        // Формируем данные для сохранения
-        const mapData = {
-          categories: this.categories.map((category) => ({
-            id: category.id,
-            name: category.name,
-            color: category.color,
-            markers: category.markers.map((marker) => ({
-              id: marker.id,
-              title: marker.title,
-              latitude: marker.latitude,
-              longitude: marker.longitude,
-              description: marker.description || "",
-            })),
-          })),
-        };
+        // Сохраняем каждую категорию как коллекцию
+        for (const category of this.categories) {
+          const collectionData = {
+            title: category.name,
+            map_id: mapId,
+            is_public: false,
+            collection_color: category.color,
+          };
 
-        // Отправляем запрос на сервер
-        const response = await fetch(`${API_URL}/maps/${mapId}/bulk-update`, {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${Cookies.get("access_token")}`,
-          },
-          body: JSON.stringify(mapData),
-        });
+          let collectionId = category.id;
 
-        if (!response.ok) {
-          throw new Error(
-            `Ошибка при сохранении данных карты: ${response.status}`
-          );
+          // Если у категории нет ID или ID локальный, создаем новую коллекцию
+          if (!collectionId || collectionId.toString().startsWith("local_")) {
+            try {
+              const response = await api.post("/collections/", collectionData);
+
+              if (response.data) {
+                const newCollection = response.data;
+                collectionId = newCollection.collection_id;
+                category.id = collectionId; // Обновляем ID категории
+                console.log(
+                  `Создана новая коллекция ${collectionId} для карты ${mapId}`
+                );
+              } else {
+                throw new Error("Ошибка при создании коллекции: ответ пуст");
+              }
+            } catch (error) {
+              console.error("Ошибка при создании коллекции:", error);
+              continue;
+            }
+          } else {
+            // Обновляем существующую коллекцию
+            try {
+              const response = await api.put(
+                `/collections/${collectionId}`,
+                collectionData
+              );
+
+              if (!response.data) {
+                console.warn(`Не удалось обновить коллекцию ${collectionId}`);
+              } else {
+                console.log(`Коллекция ${collectionId} успешно обновлена`);
+              }
+            } catch (error) {
+              console.error(
+                `Ошибка при обновлении коллекции ${collectionId}:`,
+                error
+              );
+            }
+          }
+
+          // Сохраняем маркеры коллекции
+          for (const marker of category.markers) {
+            // Преобразуем блоки в markdown если нужно
+            if (!marker.markdownContent && marker.blocks) {
+              marker.markdownContent = this.blocksToMarkdown(marker.blocks);
+            }
+
+            const markerData = {
+              latitude: marker.latitude || marker.position[0],
+              longitude: marker.longitude || marker.position[1],
+              title: marker.name,
+              description: marker.markdownContent
+                ? marker.markdownContent.substring(0, 100)
+                : "", // Краткое описание
+            };
+
+            let markerId = marker.id;
+
+            // Если у маркера нет ID или ID локальный, создаем новый
+            if (!markerId || markerId.toString().startsWith("local_")) {
+              try {
+                // Создаем маркер
+                const markerResponse = await api.post("/markers/", {
+                  ...markerData,
+                  map_id: mapId,
+                });
+
+                if (markerResponse.data) {
+                  const newMarker = markerResponse.data;
+                  markerId = newMarker.marker_id;
+                  marker.id = markerId; // Обновляем ID маркера
+                  console.log(
+                    `Создан новый маркер ${markerId} для карты ${mapId}`
+                  );
+
+                  // Добавляем маркер в коллекцию
+                  const addToCollectionResponse = await api.post(
+                    `/collections/${collectionId}/markers`,
+                    {
+                      marker_id: markerId,
+                    }
+                  );
+
+                  if (!addToCollectionResponse.data) {
+                    console.warn(
+                      `Не удалось добавить маркер ${markerId} в коллекцию ${collectionId}`
+                    );
+                  } else {
+                    console.log(
+                      `Маркер ${markerId} успешно добавлен в коллекцию ${collectionId}`
+                    );
+                  }
+
+                  // Создаем статью для маркера
+                  if (marker.markdownContent) {
+                    const articleResponse = await api.post(
+                      `/markers/${markerId}/article`,
+                      {
+                        markdown_content: marker.markdownContent,
+                      }
+                    );
+
+                    if (!articleResponse.data) {
+                      console.warn(
+                        `Не удалось создать статью для маркера ${markerId}`
+                      );
+                    } else {
+                      console.log(
+                        `Статья для маркера ${markerId} успешно создана`
+                      );
+                    }
+                  }
+                } else {
+                  throw new Error("Ошибка при создании маркера: ответ пуст");
+                }
+              } catch (error) {
+                console.error("Ошибка при создании маркера:", error);
+                continue;
+              }
+            } else {
+              // Обновляем существующий маркер
+              try {
+                const markerResponse = await api.put(
+                  `/markers/${markerId}`,
+                  markerData
+                );
+
+                if (!markerResponse.data) {
+                  console.warn(`Не удалось обновить маркер ${markerId}`);
+                } else {
+                  console.log(`Маркер ${markerId} успешно обновлен`);
+                }
+
+                // Обновляем статью для маркера
+                if (marker.markdownContent) {
+                  const articleResponse = await api.put(
+                    `/markers/${markerId}/article`,
+                    {
+                      markdown_content: marker.markdownContent,
+                    }
+                  );
+
+                  if (!articleResponse.data) {
+                    console.warn(
+                      `Не удалось обновить статью для маркера ${markerId}`
+                    );
+                  } else {
+                    console.log(
+                      `Статья для маркера ${markerId} успешно обновлена`
+                    );
+                  }
+                }
+              } catch (error) {
+                console.error(
+                  `Ошибка при обновлении маркера ${markerId}:`,
+                  error
+                );
+              }
+            }
+          }
         }
 
-        // Перезагружаем данные карты
-        await this.loadMapData();
+        console.log("Данные карты успешно сохранены на сервере");
 
-        return true;
-      } catch (error) {
-        console.error("Ошибка при сохранении данных карты:", error);
-        return false;
+        // Перерисовываем маркеры для отображения обновленных данных
+        this.renderMarkers();
+      } catch (e) {
+        console.error("Ошибка при сохранении данных карты:", e);
       }
     },
 
@@ -1671,7 +1847,10 @@ export default {
         category.name
       );
       if (newName && newName.trim()) {
-        // Обновляем коллекцию на сервере
+        // Получаем ID карты из параметров маршрута
+        const mapId = this.$route.params.id;
+
+        // Обновляем коллекцию на сервере с полным набором данных
         fetch(`${API_URL}/collections/${category.id}`, {
           method: "PUT",
           headers: {
@@ -1680,7 +1859,10 @@ export default {
           },
           body: JSON.stringify({
             title: newName.trim(),
-            collection_color: category.color,
+            map_id: mapId, // Добавляем ID карты - обязательное поле
+            is_public:
+              category.is_public !== undefined ? category.is_public : false, // Добавляем флаг публичности
+            collection_color: category.color || "#000000", // Используем цвет категории или значение по умолчанию
           }),
         })
           .then((response) => {
@@ -1691,9 +1873,14 @@ export default {
             }
             return response.json();
           })
-          .then(() => {
+          .then((data) => {
+            console.log("Коллекция успешно обновлена:", data);
+
             // Обновляем название в локальных данных
             category.name = newName.trim();
+
+            // Сохраняем обновленную карту
+            this.saveMapData();
           })
           .catch((error) => {
             console.error("Ошибка при переименовании коллекции:", error);
@@ -1747,10 +1934,23 @@ export default {
       if (item.title !== undefined || item.name !== undefined) {
         // Это маркер - не проверяем ввод, просто удаляем
         const categoryId = this.currentCategory.id;
-        const markerId = item.id || item.marker_id;
+
+        // Правильное определение ID маркера
+        // Проверяем свойства marker_id и id в этом порядке, так как marker_id более вероятно является правильным ID маркера
+        const markerId = item.marker_id || item.id;
 
         if (!markerId) {
           console.error("Ошибка: ID маркера не определен", item);
+          this.cancelDelete();
+          return;
+        }
+
+        // Проверка, что markerId не совпадает с ID коллекции
+        if (markerId === categoryId) {
+          console.error("Ошибка: ID маркера совпадает с ID коллекции", {
+            markerId,
+            categoryId,
+          });
           this.cancelDelete();
           return;
         }
@@ -1767,15 +1967,23 @@ export default {
                 const markerIndex = this.categories[
                   categoryIndex
                 ].markers.findIndex(
-                  (m) => m.id === markerId || m.marker_id === markerId
+                  (m) => m.marker_id === markerId || m.id === markerId
                 );
                 if (markerIndex !== -1) {
+                  // Получаем объект маркера перед удалением, чтобы иметь правильную ссылку
+                  const markerToDelete =
+                    this.categories[categoryIndex].markers[markerIndex];
+
+                  // Удаляем маркер из массива категории
                   this.categories[categoryIndex].markers.splice(markerIndex, 1);
 
-                  // Удаляем маркер с карты
-                  if (this.leafletMarkers[markerId]) {
-                    this.map.removeLayer(this.leafletMarkers[markerId]);
-                    delete this.leafletMarkers[markerId];
+                  // Удаляем маркер с карты используя правильный ID
+                  const leafletMarkerId =
+                    markerToDelete.marker_id || markerToDelete.id;
+                  if (this.leafletMarkers[leafletMarkerId]) {
+                    this.map.removeLayer(this.leafletMarkers[leafletMarkerId]);
+                    delete this.leafletMarkers[leafletMarkerId];
+                    console.log(`Маркер ${leafletMarkerId} удален с карты`);
                   }
                 }
               }
@@ -1791,19 +1999,30 @@ export default {
                 const markerIndex = this.categories[
                   categoryIndex
                 ].markers.findIndex(
-                  (m) => m.id === markerId || m.marker_id === markerId
+                  (m) => m.marker_id === markerId || m.id === markerId
                 );
                 if (markerIndex !== -1) {
+                  // Получаем объект маркера перед удалением, чтобы иметь правильную ссылку
+                  const markerToDelete =
+                    this.categories[categoryIndex].markers[markerIndex];
+
+                  // Удаляем маркер из массива категории
                   this.categories[categoryIndex].markers.splice(markerIndex, 1);
 
-                  // Удаляем маркер с карты
-                  if (this.leafletMarkers[markerId]) {
-                    this.map.removeLayer(this.leafletMarkers[markerId]);
-                    delete this.leafletMarkers[markerId];
+                  // Удаляем маркер с карты используя правильный ID
+                  const leafletMarkerId =
+                    markerToDelete.marker_id || markerToDelete.id;
+                  if (this.leafletMarkers[leafletMarkerId]) {
+                    this.map.removeLayer(this.leafletMarkers[leafletMarkerId]);
+                    delete this.leafletMarkers[leafletMarkerId];
+                    console.log(`Маркер ${leafletMarkerId} удален с карты`);
                   }
                 }
               }
             }
+
+            // Сохраняем изменения
+            this.saveMapData();
           })
           .catch((error) => {
             console.error("Ошибка при удалении маркера:", error);
@@ -1846,6 +2065,9 @@ export default {
 
               // Удаляем категорию из списка
               this.categories.splice(categoryIndex, 1);
+
+              // Сохраняем изменения
+              this.saveMapData();
             }
           })
           .catch((error) => {
@@ -1865,9 +2087,105 @@ export default {
         return false;
       }
 
+      // Проверяем, что markerId не используется как ID коллекции
+      try {
+        // Пытаемся получить данные маркера перед удалением
+        const markerCheckResponse = await api.get(`/markers/${markerId}`);
+        if (!markerCheckResponse.data || markerCheckResponse.status !== 200) {
+          console.error(
+            `ID ${markerId} не является валидным идентификатором маркера`
+          );
+          return false;
+        }
+      } catch (checkError) {
+        console.error(
+          `Ошибка при проверке ID маркера ${markerId}:`,
+          checkError
+        );
+        return false;
+      }
+
       try {
         console.log(`Отправка запроса на удаление маркера с ID ${markerId}`);
 
+        // Сначала удаляем маркер из всех коллекций
+        try {
+          console.log(
+            `Получение списка коллекций для карты ${this.$route.params.id}...`
+          );
+          // Используем map_id напрямую как основной параметр для получения коллекций
+          const mapId = this.$route.params.id;
+          const collectionsResponse = await api.get(
+            `/collections/?map_id=${mapId}`
+          );
+
+          const collections = Array.isArray(collectionsResponse.data)
+            ? collectionsResponse.data
+            : collectionsResponse.data.collections || [];
+
+          console.log(`Получено ${collections.length} коллекций`);
+
+          // Удаляем маркер из каждой коллекции
+          for (const collection of collections) {
+            try {
+              // Проверяем, что не пытаемся удалить маркер с ID, совпадающим с ID коллекции
+              if (markerId === collection.collection_id) {
+                console.warn(
+                  `Пропуск удаления: ID маркера (${markerId}) совпадает с ID коллекции`
+                );
+                continue;
+              }
+
+              console.log(
+                `Удаление маркера ${markerId} из коллекции ${collection.collection_id}...`
+              );
+
+              // Сначала проверяем, что маркер действительно есть в коллекции
+              try {
+                const checkResponse = await api.get(
+                  `/collections/${collection.collection_id}/markers`
+                );
+
+                const markers = checkResponse.data || [];
+                const markerExists = markers.some(
+                  (m) => m.marker_id === markerId || m.id === markerId
+                );
+
+                if (!markerExists) {
+                  console.log(
+                    `Маркер ${markerId} не найден в коллекции ${collection.collection_id}, пропускаем удаление`
+                  );
+                  continue;
+                }
+              } catch (checkError) {
+                console.warn(
+                  `Не удалось проверить наличие маркера в коллекции:`,
+                  checkError
+                );
+              }
+
+              await api.delete(
+                `/collections/${collection.collection_id}/markers/${markerId}`
+              );
+              console.log(
+                `Маркер успешно удален из коллекции ${collection.collection_id}`
+              );
+            } catch (collectionError) {
+              console.warn(
+                `Не удалось удалить маркер из коллекции ${collection.collection_id}:`,
+                collectionError
+              );
+              // Продолжаем с другими коллекциями, даже если одна из операций не удалась
+            }
+          }
+        } catch (collectionsError) {
+          console.warn(
+            "Ошибка при получении или обработке коллекций:",
+            collectionsError
+          );
+        }
+
+        // После удаления из всех коллекций, удаляем сам маркер
         // Удаляем маркер из коллекции с использованием api
         await api.delete(`/markers/${markerId}`);
 
@@ -2107,6 +2425,9 @@ export default {
             console.log(
               `Маркер ${markerId} перемещен из ${sourceCategoryId} в ${targetCategory.id}`
             );
+
+            // Сохраняем изменения на сервере
+            this.saveMapData();
           })
           .catch((error) => {
             console.error("Ошибка при перемещении маркера:", error);
@@ -2159,6 +2480,208 @@ export default {
       this.selectedCategoryId = null;
       this.pendingMarkerCoordinates = null;
     },
+
+    /**
+     * Загрузка коллекций (категорий) и их маркеров с сервера
+     * @param {string} mapId - ID карты
+     */
+    async loadCollectionsFromServer(mapId) {
+      try {
+        // Загружаем коллекции для карты с сервера
+        const response = await fetch(`${API_URL}/collections?map_id=${mapId}`, {
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${Cookies.get("access_token")}`,
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Ошибка при загрузке коллекций: ${response.status}`);
+        }
+
+        const collections = await response.json();
+
+        // Преобразуем коллекции в категории для отображения
+        this.categories = [];
+
+        // Для каждой коллекции загружаем маркеры
+        for (const collection of collections) {
+          // Используем цвет коллекции из БД или генерируем случайный, если его нет
+          const collectionColor =
+            collection.collection_color || this.generateRandomColor();
+
+          // Создаем категорию
+          const category = {
+            id: collection.collection_id,
+            name: collection.title,
+            color: collectionColor,
+            expanded: true,
+            visible: true,
+            markers: [],
+          };
+
+          try {
+            // Загружаем маркеры для коллекции
+            const markersResponse = await fetch(
+              `${API_URL}/collections/${collection.collection_id}/markers`,
+              {
+                method: "GET",
+                headers: {
+                  "Content-Type": "application/json",
+                  Authorization: `Bearer ${Cookies.get("access_token")}`,
+                },
+              }
+            );
+
+            if (!markersResponse.ok) {
+              console.error(
+                `Ошибка при загрузке маркеров для коллекции ${collection.collection_id}: ${markersResponse.status}`
+              );
+              // Добавляем категорию даже без маркеров
+              this.categories.push(category);
+              continue;
+            }
+
+            const markers = await markersResponse.json();
+
+            // Преобразуем маркеры в формат для отображения
+            for (const marker of markers) {
+              // Загружаем статью для маркера
+              let blocks = [
+                { type: "text", content: marker.description || "" },
+              ];
+              let markdownContent = marker.description || "";
+
+              try {
+                const articleResponse = await fetch(
+                  `${API_URL}/markers/${marker.marker_id}/article`,
+                  {
+                    method: "GET",
+                    headers: {
+                      "Content-Type": "application/json",
+                      Authorization: `Bearer ${Cookies.get("access_token")}`,
+                    },
+                  }
+                );
+
+                if (articleResponse.ok) {
+                  const article = await articleResponse.json();
+                  if (article && article.markdown_content) {
+                    markdownContent = article.markdown_content;
+                    blocks = this.markdownToBlocks(markdownContent);
+                  }
+                }
+              } catch (articleError) {
+                console.warn(
+                  `Не удалось загрузить статью для маркера ${marker.marker_id}:`,
+                  articleError
+                );
+              }
+
+              category.markers.push({
+                id: marker.marker_id,
+                name: marker.title || "Метка без названия",
+                visible: true,
+                position: [marker.latitude, marker.longitude],
+                // Добавляем оригинальные координаты для CustomMapView
+                latitude: marker.latitude,
+                longitude: marker.longitude,
+                blocks: blocks,
+                markdownContent: markdownContent,
+              });
+            }
+
+            // Добавляем категорию с маркерами
+            this.categories.push(category);
+          } catch (markersError) {
+            console.error(
+              `Ошибка при загрузке маркеров для коллекции ${collection.collection_id}:`,
+              markersError
+            );
+            // Добавляем категорию даже в случае ошибки
+            this.categories.push(category);
+          }
+        }
+
+        // Если категорий нет, создаем категорию "Без категории"
+        if (this.categories.length === 0) {
+          await this.createDefaultCategory(mapId);
+        }
+
+        // Отображаем маркеры на карте
+        this.renderMarkers();
+      } catch (e) {
+        console.error("Ошибка при загрузке коллекций с сервера:", e);
+        // Если произошла ошибка, все равно создаем категорию "Без категории"
+        await this.createDefaultCategory(this.$route.params.id);
+      }
+    },
+
+    /**
+     * Создает случайный цвет для категорий
+     * @returns {string} - HEX код цвета
+     */
+    generateRandomColor() {
+      const colors = [
+        "#8A2BE2", // BlueViolet
+        "#DC143C", // Crimson
+        "#FF8C00", // DarkOrange
+        "#2E8B57", // SeaGreen
+        "#4682B4", // SteelBlue
+        "#800080", // Purple
+      ];
+      return colors[Math.floor(Math.random() * colors.length)];
+    },
+
+    /**
+     * Обновление позиции маркера после перетаскивания на карте
+     * @param {Object} leafletMarker - маркер Leaflet
+     * @param {string} markerId - ID маркера
+     */
+    updateMarkerPosition(leafletMarker, markerId) {
+      try {
+        if (!leafletMarker || !markerId) {
+          console.error(
+            "Неправильные параметры для обновления позиции маркера"
+          );
+          return;
+        }
+
+        // Получаем новые координаты маркера в системе Leaflet
+        const latLng = leafletMarker.getLatLng();
+        const [x, y] = this.reverseTransformCoordinates(latLng.lat, latLng.lng);
+
+        console.log(`Маркер ${markerId} перемещен на позицию:`, {
+          lat: y,
+          lng: x,
+        });
+
+        // Обновляем координаты маркера в каждой категории, где он может находиться
+        for (const category of this.categories) {
+          const marker = category.markers.find(
+            (m) => m.id === markerId || m.marker_id === markerId
+          );
+
+          if (marker) {
+            // Обновляем координаты в объекте маркера
+            marker.latitude = y;
+            marker.longitude = x;
+            marker.position = [y, x];
+
+            console.log(
+              `Обновлены координаты маркера ${markerId} в категории ${category.name}`
+            );
+            break;
+          }
+        }
+
+        // Сохраняем изменения на сервере
+        this.saveMapData();
+      } catch (error) {
+        console.error("Ошибка при обновлении позиции маркера:", error);
+      }
+    },
   },
 };
 </script>
@@ -2186,5 +2709,33 @@ export default {
   font-size: 14px;
   text-align: center;
   border: 1px solid #ccc;
+}
+
+/* Стили для кнопки шеринга */
+.map-actions-panel {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  z-index: 500;
+  display: flex;
+  gap: 10px;
+}
+
+.share-button {
+  background-color: #4a90e2;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 15px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.share-button:hover {
+  background-color: #3a80d2;
 }
 </style> 
