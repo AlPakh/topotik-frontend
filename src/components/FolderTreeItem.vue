@@ -12,7 +12,7 @@
       @drop.prevent="onDrop"
       @dragenter.prevent="dragEnter = true"
       @dragleave="dragEnter = false"
-      :class="{ 'drag-over': dragEnter }"
+      :class="{ 'drag-over': dragEnter, 'shared-item': item.is_shared }"
     >
       <!-- Иконка в зависимости от типа -->
       <div
@@ -33,17 +33,26 @@
           <img src="../assets/svg/arrow.svg" alt="Arrow" />
         </div>
       </div>
+      <div v-else-if="item.is_shared" class="icon" :title="getSharedTitle">
+        🌏︎
+      </div>
       <div v-else-if="item.mapType === 'real'" class="icon">🗺️</div>
       <div v-else class="icon">📔</div>
 
       <span class="item-name" :title="item.name">{{ displayName }}</span>
 
-      <!-- Кнопка с тремя точками (всегда в разметке) -->
-      <button class="dots-button" @click.stop="toggleMenu">⋮</button>
+      <!-- Кнопка с тремя точками (только для неshared элементов) -->
+      <button
+        v-if="!item.is_shared"
+        class="dots-button"
+        @click.stop="toggleMenu"
+      >
+        ⋮
+      </button>
 
-      <!-- Контекстное меню -->
+      <!-- Контекстное меню (только для неshared элементов) -->
       <div
-        v-if="showMenu"
+        v-if="showMenu && !item.is_shared"
         class="context-menu"
         @mouseover="menuHovered = true"
         @mouseleave="menuHovered = false"
@@ -65,6 +74,7 @@
         :expanded-folders="expandedFolders"
         @selectItem="$emit('selectItem', $event)"
         @moveItem="handleMoveItem"
+        @moveSharedItem="$emit('moveSharedItem', $event)"
         @renameItem="$emit('renameItem', $event)"
         @deleteItem="$emit('deleteItem', $event)"
         @shareItem="$emit('shareItem', $event)"
@@ -131,6 +141,11 @@ export default {
 
       return this.item.name;
     },
+
+    // Заголовок для общей карты
+    getSharedTitle() {
+      return `Карта от: ${this.item.shared_by || "Неизвестного пользователя"}`;
+    },
   },
   watch: {
     // Следим за изменением списка развернутых папок
@@ -170,15 +185,17 @@ export default {
       this.$emit("selectItem", this.item);
     },
     onContextMenu(event) {
-      // Открываем контекстное меню при правом клике
-      this.showMenu = true;
+      // Открываем контекстное меню только для не-общих элементов
+      if (!this.item.is_shared) {
+        this.showMenu = true;
 
-      // Эмитим событие для родительского компонента с координатами и элементом
-      this.$emit("contextMenu", {
-        item: this.item,
-        x: event.clientX,
-        y: event.clientY,
-      });
+        // Эмитим событие для родительского компонента с координатами и элементом
+        this.$emit("contextMenu", {
+          item: this.item,
+          x: event.clientX,
+          y: event.clientY,
+        });
+      }
 
       // Предотвращаем стандартное контекстное меню
       event.preventDefault();
@@ -193,7 +210,10 @@ export default {
       });
     },
     toggleMenu() {
-      this.showMenu = !this.showMenu;
+      // Только для не-общих элементов
+      if (!this.item.is_shared) {
+        this.showMenu = !this.showMenu;
+      }
     },
     handleMouseLeave() {
       this.hovered = false;
@@ -231,64 +251,85 @@ export default {
     },
     onDragStart(event) {
       // Передаем информацию о перетаскиваемом элементе
-      event.dataTransfer.setData(
-        "text/plain",
-        JSON.stringify({
-          id: this.item.id,
-          type: this.item.type,
-          name: this.item.name,
-          mapType: this.item.mapType,
-        })
-      );
+      const dragData = {
+        id: this.item.id,
+        type: this.item.type,
+        name: this.item.name,
+        mapType: this.item.mapType,
+        is_shared: !!this.item.is_shared,
+      };
+
+      event.dataTransfer.setData("text/plain", JSON.stringify(dragData));
       event.dataTransfer.effectAllowed = "move";
     },
     onDragOver(event) {
-      // Разрешаем перетаскивание (по умолчанию браузеры блокируют)
-      event.preventDefault();
-      this.dragEnter = true;
+      // Разрешаем перетаскивание только для папок
+      if (this.item.type === "folder") {
+        event.preventDefault();
+        this.dragEnter = true;
+      }
     },
     onDrop(event) {
       this.dragEnter = false;
-      const sourceItemData = JSON.parse(
-        event.dataTransfer.getData("text/plain")
-      );
 
-      // Не позволяем перетаскивать элемент сам в себя
-      if (sourceItemData.id === this.item.id) {
-        return;
-      }
+      // Только для папок
+      if (this.item.type !== "folder") return;
 
-      // Только папки могут быть целью для перетаскивания
-      if (this.item.type === "folder") {
-        // Если пытаемся переместить папку, проверяем, что не создаем циклическую зависимость
-        if (sourceItemData.type === "folder") {
-          // Генерируем событие moveItem с дополнительным полем для проверки на циклическую зависимость
+      try {
+        const sourceData = JSON.parse(event.dataTransfer.getData("text/plain"));
+
+        // Не позволяем перетаскивать элемент сам в себя
+        if (sourceData.id === this.item.id) return;
+
+        // Если это общая карта - используем специальный обработчик
+        if (sourceData.is_shared) {
+          this.$emit("moveSharedItem", {
+            mapId: sourceData.id,
+            targetFolderId: this.item.id,
+          });
+
+          // Автоматически раскрываем папку
+          if (!this.localIsOpen) {
+            this.expandFolder();
+          }
+        }
+        // Если источник - папка, добавляем проверку на циклическую зависимость
+        else if (sourceData.type === "folder") {
           this.$emit("moveItem", {
-            sourceId: sourceItemData.id,
+            sourceId: sourceData.id,
             targetId: this.item.id,
-            checkCycle: true, // Добавляем флаг для проверки на циклическую зависимость
+            sourceItem: sourceData,
+            checkCycle: true,
           });
         } else {
           // Для карт просто перемещаем
           this.$emit("moveItem", {
-            sourceId: sourceItemData.id,
+            sourceId: sourceData.id,
             targetId: this.item.id,
+            sourceItem: sourceData,
           });
 
-          // Автоматически раскрываем папку при перетаскивании в нее
+          // Автоматически раскрываем папку
           if (!this.localIsOpen) {
-            this.localIsOpen = true;
-            this.$emit("folderToggled", {
-              folderId: this.item.id,
-              isOpen: true,
-            });
+            this.expandFolder();
           }
         }
+      } catch (e) {
+        console.error("Ошибка при обработке перетаскивания:", e);
       }
     },
     handleMoveItem(moveData) {
-      // Прокидываем событие дальше наверх
-      this.$emit("moveItem", moveData);
+      // Проверяем, является ли элемент общей картой
+      if (moveData.sourceItem && moveData.sourceItem.is_shared) {
+        // Используем специальный обработчик для общих карт
+        this.$emit("moveSharedItem", {
+          mapId: moveData.sourceId,
+          targetFolderId: moveData.targetId,
+        });
+      } else {
+        // Обычное перемещение элементов
+        this.$emit("moveItem", moveData);
+      }
     },
     // Новый метод для обработки событий от дочерних папок
     handleFolderToggled(data) {
@@ -323,3 +364,10 @@ export default {
 </script>
 
 <style scoped src="@/assets/css/components/FolderTreeItem.css"></style>
+
+<style scoped>
+/* Стиль для общих карт */
+.shared-item {
+  border-left: 2px solid #4a90e2;
+}
+</style>

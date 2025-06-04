@@ -12,9 +12,9 @@
       @dragstart="onDragStart($event, item)"
       @dragover.prevent
       @drop.prevent="onDrop($event, item)"
-      @dragenter.prevent="highlightItem($event)"
+      @dragenter.prevent="highlightItem($event, item)"
       @dragleave="unhighlightItem($event)"
-      :class="{ 'has-menu-open': item.showMenu }"
+      :class="{ 'has-menu-open': item.showMenu, 'shared-item': item.is_shared }"
     >
       <!-- Иконка и название -->
       <div v-if="item.type === 'folder'" class="item-content folder">
@@ -22,17 +22,34 @@
         <span class="item-name" :title="item.name">{{ item.name }}</span>
       </div>
       <div v-else-if="item.type === 'map'" class="item-content">
-        <span v-if="item.mapType === 'real'" class="item-icon">🗺️</span>
+        <span
+          v-if="item.is_shared"
+          class="item-icon"
+          :title="getSharedTitle(item)"
+          >🌏︎</span
+        >
+        <span v-else-if="item.mapType === 'real'" class="item-icon">🗺️</span>
         <span v-else class="item-icon">🗒️</span>
         <span class="item-name" :title="item.name">{{ item.name }}</span>
+
+        <!-- Показываем владельца для общих карт -->
+        <span v-if="item.is_shared" class="shared-by"
+          >от {{ item.shared_by || "Неизвестного пользователя" }}</span
+        >
       </div>
 
-      <!-- Кнопка с тремя точками -->
-      <button class="dots-button" @click.stop="toggleMenu(item)">⋮</button>
+      <!-- Кнопка с тремя точками (только для не-общих элементов) -->
+      <button
+        v-if="!item.is_shared"
+        class="dots-button"
+        @click.stop="toggleMenu(item)"
+      >
+        ⋮
+      </button>
 
-      <!-- Контекстное меню -->
+      <!-- Контекстное меню (только для не-общих элементов) -->
       <div
-        v-if="item.showMenu"
+        v-if="item.showMenu && !item.is_shared"
         class="context-menu"
         @mouseover="updateItemState(item, { menuHovered: true })"
         @mouseleave="updateItemState(item, { menuHovered: false })"
@@ -90,6 +107,10 @@ export default {
     },
   },
   methods: {
+    // Получить заголовок для общей карты
+    getSharedTitle(item) {
+      return `Общая карта от: ${item.shared_by || "Неизвестного пользователя"}`;
+    },
     // Обновление состояния элемента
     updateItemState(item, newState) {
       this.itemStates[item.id] = {
@@ -107,20 +128,25 @@ export default {
       this.$emit("selectItem", item);
     },
     onContextMenu(event, item) {
-      // Показываем меню при правом клике
-      this.updateItemState(item, { showMenu: true });
+      // Показываем меню при правом клике только для не-общих элементов
+      if (!item.is_shared) {
+        this.updateItemState(item, { showMenu: true });
 
-      // Эмитим событие contextMenu с данными элемента и координатами клика
-      this.$emit("contextMenu", {
-        item,
-        x: event.clientX,
-        y: event.clientY,
-      });
+        // Эмитим событие contextMenu с данными элемента и координатами клика
+        this.$emit("contextMenu", {
+          item,
+          x: event.clientX,
+          y: event.clientY,
+        });
+      }
     },
     toggleMenu(item) {
-      this.updateItemState(item, {
-        showMenu: !item.showMenu,
-      });
+      // Показываем меню только для не-общих элементов
+      if (!item.is_shared) {
+        this.updateItemState(item, {
+          showMenu: !item.showMenu,
+        });
+      }
     },
     handleMouseLeave(item) {
       this.updateItemState(item, { hovered: false });
@@ -164,6 +190,7 @@ export default {
       this.$emit("createNew");
     },
     onDragStart(event, item) {
+      // Добавляем информацию о том, является ли элемент общей картой
       event.dataTransfer.setData(
         "text/plain",
         JSON.stringify({
@@ -171,6 +198,7 @@ export default {
           type: item.type,
           name: item.name,
           mapType: item.mapType,
+          is_shared: !!item.is_shared,
         })
       );
       event.dataTransfer.effectAllowed = "move";
@@ -185,15 +213,21 @@ export default {
 
       // Если целевой элемент - папка, переместить внутрь
       if (targetItem.type === "folder") {
-        // Если источник - тоже папка, добавляем флаг проверки на циклическую зависимость
-        if (sourceItemData.type === "folder") {
+        // Проверяем, является ли перемещаемый элемент общей картой
+        if (sourceItemData.is_shared) {
+          this.$emit("moveSharedItem", {
+            mapId: sourceItemData.id,
+            targetFolderId: targetItem.id,
+          });
+        } else if (sourceItemData.type === "folder") {
+          // Если источник - обычная папка, добавляем флаг проверки на циклическую зависимость
           this.$emit("moveItem", {
             sourceId: sourceItemData.id,
             targetId: targetItem.id,
             checkCycle: true,
           });
         } else {
-          // Для карт просто перемещаем
+          // Для обычных карт просто перемещаем
           this.$emit("moveItem", {
             sourceId: sourceItemData.id,
             targetId: targetItem.id,
@@ -201,9 +235,9 @@ export default {
         }
       }
     },
-    highlightItem(event) {
+    highlightItem(event, item) {
       // Подсвечиваем только папки при перетаскивании
-      if (event.currentTarget.querySelector(".folder")) {
+      if (item.type === "folder") {
         event.currentTarget.classList.add("drag-over");
       }
     },
@@ -221,3 +255,16 @@ export default {
 </script>
 
 <style scoped src="@/assets/css/components/FolderContentView.css"></style>
+
+<style scoped>
+/* Стиль для общих карт */
+.shared-item {
+  border-left: 2px solid #4a90e2;
+}
+
+.shared-by {
+  font-size: 0.8em;
+  color: #666;
+  margin-left: 5px;
+}
+</style>

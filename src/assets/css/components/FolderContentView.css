@@ -207,3 +207,21 @@
         right: 0;
     }
 }
+
+/* Стили для общих карт */
+.shared-item {
+    border-left: 3px solid #4a90e2;
+    background-color: rgba(74, 144, 226, 0.05);
+}
+
+.shared-by {
+    font-size: 0.8em;
+    color: #666;
+    margin-left: 5px;
+    font-style: italic;
+}
+
+/* Иконка для общих карт */
+.item-content .item-icon[title^="Общая карта"] {
+    color: #4a90e2;
+}

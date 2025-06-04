@@ -159,7 +159,37 @@ export const markerOperationsMixin = {
 
         // Метод удаления маркера с сервера
         async deleteMarkerFromServer(markerId) {
+            if (!markerId) {
+                console.error("Ошибка: ID маркера не определен");
+                return false;
+            }
+
+            // Проверка на локальные маркеры (начинаются с "local_")
+            if (typeof markerId === 'string' && markerId.startsWith('local_')) {
+                console.log(`Удаление локального маркера ${markerId}`);
+                return true; // Для локальных маркеров не нужно обращаться к серверу
+            }
+
             try {
+                // Проверяем, что markerId действительно относится к маркеру, а не к коллекции
+                try {
+                    const checkResponse = await fetch(`${API_URL}/markers/${markerId}`, {
+                        method: "GET",
+                        headers: {
+                            "Content-Type": "application/json",
+                            Authorization: `Bearer ${Cookies.get("access_token")}`
+                        }
+                    });
+
+                    if (!checkResponse.ok) {
+                        console.error(`Ошибка: ID ${markerId} не найден как маркер (статус ${checkResponse.status})`);
+                        return false;
+                    }
+                } catch (checkError) {
+                    console.error(`Ошибка при проверке маркера ${markerId}:`, checkError);
+                    return false;
+                }
+
                 // Сначала удаляем маркер из всех коллекций
                 const mapId = this.$route.params.id;
 
@@ -183,6 +213,12 @@ export const markerOperationsMixin = {
                 // Удаляем маркер из каждой коллекции
                 for (const collection of collections) {
                     try {
+                        // Проверяем, не пытаемся ли мы использовать ID коллекции как ID маркера
+                        if (collection.collection_id === markerId) {
+                            console.error(`Ошибка: попытка удалить маркер с ID, совпадающим с ID коллекции: ${markerId}`);
+                            continue;
+                        }
+
                         await fetch(
                             `${API_URL}/collections/${collection.collection_id}/markers/${markerId}`,
                             {
@@ -207,7 +243,13 @@ export const markerOperationsMixin = {
                     }
                 });
 
-                return response.ok;
+                if (response.ok) {
+                    console.log(`Маркер ${markerId} успешно удален с сервера`);
+                    return true;
+                } else {
+                    console.error(`Ошибка при удалении маркера ${markerId}: ${response.status}`);
+                    return false;
+                }
             } catch (error) {
                 console.error("Ошибка при удалении маркера:", error);
                 return false;

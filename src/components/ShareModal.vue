@@ -153,6 +153,7 @@
 
 <script>
 import { sharingService } from "@/services/sharing";
+import { showError } from "@/services/alertService";
 
 export default {
   name: "ShareModal",
@@ -339,7 +340,30 @@ export default {
         this.$notify?.success("Доступ предоставлен");
       } catch (error) {
         console.error("Ошибка при добавлении доступа:", error);
+
+        // Проверяем наличие текста ошибки о ненайденном пользователе
+        if (error.response && error.response.data) {
+          const errorMessage = error.response.data.detail || "";
+          if (errorMessage.includes("не найден") && this.newInviteEmail) {
+            // Показываем специализированное сообщение для ненайденного пользователя
+            this.$notify?.warning(
+              `Пользователь ${this.newInviteEmail} не зарегистрирован в системе`
+            );
+            // Если компонент уведомлений не зарегистрирован, используем alertService
+            if (!this.$notify) {
+              showError(
+                `Пользователь ${this.newInviteEmail} не зарегистрирован в системе`
+              );
+            }
+            return;
+          }
+        }
+
+        // Для всех остальных ошибок
         this.$notify?.error("Не удалось предоставить доступ");
+        if (!this.$notify) {
+          showError("Не удалось предоставить доступ");
+        }
       }
     },
 

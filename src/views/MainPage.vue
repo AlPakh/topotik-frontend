@@ -11,6 +11,7 @@
         @selectItem="handleSelectItem"
         @createNew="handleCreateNew"
         @moveItem="handleMoveItem"
+        @moveSharedItem="handleMoveSharedItem"
         @renameItem="handleRenameItem"
         @deleteItem="confirmDeleteItem"
         @folderToggled="handleFolderToggled"
@@ -47,6 +48,7 @@
                 :viewMode="viewMode"
                 @selectItem="handleSelectItem"
                 @moveItem="handleMoveItem"
+                @moveSharedItem="handleMoveSharedItem"
                 @createNew="handleCreateNew"
                 @renameItem="handleRenameItem"
                 @deleteItem="confirmDeleteItem"
@@ -161,6 +163,7 @@ import {
   deleteMap,
   updateMap,
   getMapById,
+  moveSharedMapToFolder,
 } from "@/services/maps";
 import {
   createFolder,
@@ -1260,6 +1263,47 @@ export default {
         resourceId: item.id,
         owner: null, // Владельца можно получить через API при необходимости
       });
+    },
+
+    // Обработчик перемещения ярлыка общей карты
+    async handleMoveSharedItem({ mapId, targetFolderId }) {
+      try {
+        console.log(
+          `Перемещение ярлыка общей карты ${mapId} в папку ${
+            targetFolderId || "корневой каталог"
+          }`
+        );
+
+        // Вызываем API для перемещения ярлыка общей карты
+        await moveSharedMapToFolder(mapId, targetFolderId);
+
+        // Обновляем структуру после перемещения
+        await this.loadFolderStructure();
+
+        // Если текущий выбранный элемент - "Корневой каталог", обновляем его содержимое
+        if (this.selectedItem && this.selectedItem.id === "root") {
+          this.selectedItem.children = this.getRootItems();
+        }
+
+        // Показываем уведомление об успешном перемещении
+        this.$alert.success("Ярлык карты успешно перемещен");
+      } catch (err) {
+        console.error("Ошибка при перемещении ярлыка общей карты:", err);
+
+        // Показываем уведомление об ошибке
+        if (err.response && err.response.status >= 400) {
+          this.$alert.error(
+            `Не удалось переместить ярлык карты: ${
+              err.response.data?.detail || "Неизвестная ошибка"
+            }`
+          );
+        } else {
+          this.$alert.error("Произошла ошибка при перемещении ярлыка карты");
+        }
+      } finally {
+        // Обновляем представления независимо от результата операции
+        this.refreshViews();
+      }
     },
   },
 

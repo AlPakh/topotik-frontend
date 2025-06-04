@@ -3,6 +3,7 @@
     class="marker-editor-panel"
     ref="editorPanel"
     :style="{ width: editorWidth + 'px' }"
+    @click.stop
   >
     <div class="resize-handle" @mousedown="startResize"></div>
     <div class="editor-header">

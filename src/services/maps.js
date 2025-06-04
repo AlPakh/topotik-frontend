@@ -109,4 +109,17 @@ export const deleteMap = async (mapId) => {
 export const getFolderStructure = async () => {
     const response = await api.get('/folders/structure')
     return response.data
+}
+
+/**
+ * Переместить ярлык общей карты в другую папку
+ * @param {string} mapId - ID общей карты
+ * @param {string} folderId - ID новой папки (null для перемещения в корневой каталог)
+ */
+export const moveSharedMapToFolder = async (mapId, folderId) => {
+    const response = await api.put(`/folders/shared-maps/move`, {
+        map_id: mapId,
+        target_folder_id: folderId
+    })
+    return response.data
 } 

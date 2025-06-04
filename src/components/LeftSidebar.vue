@@ -19,7 +19,8 @@
         :item="item"
         :expanded-folders="expandedFolders"
         @selectItem="$emit('selectItem', $event)"
-        @moveItem="$emit('moveItem', $event)"
+        @moveItem="handleMoveItem"
+        @moveSharedItem="$emit('moveSharedItem', $event)"
         @renameItem="$emit('renameItem', $event)"
         @deleteItem="$emit('deleteItem', $event)"
         @shareItem="$emit('shareItem', $event)"
@@ -65,6 +66,21 @@ export default {
     handleFolderToggled(data) {
       // Передаем событие наверх
       this.$emit("folderToggled", data);
+    },
+
+    // Обработчик события перемещения элемента
+    handleMoveItem(event) {
+      // Проверяем, является ли элемент общей картой
+      if (event.sourceItem && event.sourceItem.is_shared) {
+        // Используем специальный обработчик для общих карт
+        this.$emit("moveSharedItem", {
+          mapId: event.sourceId,
+          targetFolderId: event.targetId,
+        });
+      } else {
+        // Обычное перемещение элементов
+        this.$emit("moveItem", event);
+      }
     },
 
     // Найти папку с указанным ID (рекурсивно)
@@ -162,11 +178,20 @@ export default {
           // Получаем данные о перетаскиваемом элементе
           const itemData = JSON.parse(event.dataTransfer.getData("text/plain"));
 
-          // Генерируем событие для перемещения в корневой каталог (null = корневой каталог)
-          this.$emit("moveItem", {
-            sourceId: itemData.id,
-            targetId: null,
-          });
+          // Проверяем, является ли элемент общей картой
+          if (itemData.is_shared) {
+            // Для общих карт используем специальный обработчик
+            this.$emit("moveSharedItem", {
+              mapId: itemData.id,
+              targetFolderId: null,
+            });
+          } else {
+            // Для стандартных элементов используем обычный обработчик
+            this.$emit("moveItem", {
+              sourceId: itemData.id,
+              targetId: null,
+            });
+          }
         } catch (e) {
           console.error("Ошибка при обработке перетаскивания:", e);
         }

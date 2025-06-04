@@ -215,6 +215,7 @@ export default {
 
       // Новые поля для контекстного меню
       selectedContextType: null,
+      deleteType: null, // Добавляем новое поле для хранения типа удаляемого объекта
     };
   },
 
@@ -236,11 +237,15 @@ export default {
 
     // Добавляем обработчик клика вне контекстного меню
     document.addEventListener("click", this.handleOutsideClick);
+
+    // Добавляем обработчик нажатия клавиши ESC для закрытия редактора
+    document.addEventListener("keydown", this.handleKeyDown);
   },
 
   beforeUnmount() {
     // Удаляем обработчики событий при уничтожении компонента
     document.removeEventListener("click", this.handleOutsideClick);
+    document.removeEventListener("keydown", this.handleKeyDown);
   },
 
   methods: {
@@ -697,25 +702,39 @@ export default {
     },
 
     /**
-     * Преобразование внутренних координат в координаты Leaflet
-     * @param {number} x - координата X (0-1000)
-     * @param {number} y - координата Y (0-1000)
+     * Преобразование координат для отображения на карте Leaflet
+     * @param {number} x - координата X
+     * @param {number} y - координата Y
      * @return {Array} - координаты в формате Leaflet [lat, lng]
      */
     transformCoordinates(x, y) {
-      // Преобразуем координаты из внутренней системы (0-1000) в систему Leaflet
-      // y соответствует lat, x соответствует lng
+      if (x === undefined || y === undefined || isNaN(x) || isNaN(y)) {
+        console.error("Некорректные координаты для преобразования:", { x, y });
+        // Возвращаем центр карты в случае ошибки
+        return [500, 500];
+      }
+
+      // Возвращаем координаты как есть для отображения на карте
       return [y, x];
     },
 
     /**
-     * Преобразование координат Leaflet во внутренние координаты
-     * @param {number} lat - широта
-     * @param {number} lng - долгота
+     * Преобразование координат Leaflet в координаты для хранения
+     * @param {number} lat - координата lat из Leaflet
+     * @param {number} lng - координата lng из Leaflet
      * @return {Array} - координаты в формате [x, y]
      */
     reverseTransformCoordinates(lat, lng) {
-      // Преобразуем координаты из системы Leaflet во внутреннюю систему (0-1000)
+      if (lat === undefined || lng === undefined || isNaN(lat) || isNaN(lng)) {
+        console.error("Некорректные координаты для обратного преобразования:", {
+          lat,
+          lng,
+        });
+        // Возвращаем центр карты в случае ошибки
+        return [500, 500];
+      }
+
+      // Возвращаем координаты в нужном порядке
       return [lng, lat]; // x, y
     },
 
@@ -961,20 +980,73 @@ export default {
      * @param {Object} category - категория
      */
     async openMarkerDetails(marker, category) {
-      // Закрываем все открытые тултипы
-      this.closeAllTooltips();
+      try {
+        // Закрываем все открытые тултипы
+        this.closeAllTooltips();
 
-      // Центрируем карту на выбранном маркере
-      this.centerMapOnMarker(marker);
+        // Проверяем наличие ID маркера
+        const markerId = marker.id || marker.marker_id;
+        if (!markerId) {
+          console.error("У маркера отсутствует идентификатор:", marker);
+          return;
+        }
 
-      // Загружаем содержимое маркера с сервера
-      await this.loadMarkerContent(marker);
+        // Центрируем карту на выбранном маркере
+        this.centerMapOnMarker(marker);
 
-      // Устанавливаем текущий маркер и категорию
-      this.currentCategory = category;
+        console.log("Открываем редактор для маркера:", markerId);
 
-      // Показываем редактор маркера
-      this.showMarkerEditor = true;
+        // Создаем копию маркера для безопасного редактирования
+        // Используем распаковку объекта вместо JSON.parse/stringify для сохранения ссылок
+        this.currentMarker = {
+          ...marker,
+          // Сохраняем оригинальные координаты без преобразований
+          latitude: marker.latitude,
+          longitude: marker.longitude,
+        };
+
+        // Запоминаем категорию
+        this.currentCategory = category;
+
+        // Загружаем содержимое маркера с сервера
+        if (!String(markerId).startsWith("local_")) {
+          try {
+            const response = await api.get(`/markers/${markerId}/article`);
+            if (response && response.data) {
+              console.log("Загружена статья маркера:", response.data);
+              this.currentMarker.markdownContent =
+                response.data.markdown_content || "";
+            } else {
+              console.warn(
+                `Не удалось загрузить статью для маркера ${markerId}`
+              );
+              this.currentMarker.markdownContent = marker.description || "";
+            }
+          } catch (error) {
+            console.error("Ошибка при загрузке статьи маркера:", error);
+            this.currentMarker.markdownContent = marker.description || "";
+          }
+        } else {
+          // Для локального маркера используем имеющееся описание
+          this.currentMarker.markdownContent =
+            marker.description || marker.markdownContent || "";
+        }
+
+        // Преобразуем markdown в блоки для редактора
+        this.currentMarker.blocks = this.markdownToBlocks(
+          this.currentMarker.markdownContent || ""
+        );
+
+        // Добавляем имя для работы с редактором маркера
+        if (!this.currentMarker.name) {
+          this.currentMarker.name = marker.title || "Метка без названия";
+        }
+
+        // Показываем редактор маркера
+        this.showMarkerEditor = true;
+      } catch (error) {
+        console.error("Ошибка при открытии редактора маркера:", error);
+      }
     },
 
     /**
@@ -1335,12 +1407,54 @@ export default {
     handleMenuAction(action) {
       this.showContextMenu = false;
 
+      // Проверяем, что у нас есть необходимые данные
+      if (
+        action === "openMarker" ||
+        action === "editMarker" ||
+        action === "deleteMarker"
+      ) {
+        if (!this.currentMarker) {
+          console.error("Не выбран маркер для действия:", action);
+          return;
+        }
+      } else if (
+        action === "renameCategory" ||
+        action === "changeColor" ||
+        action === "deleteCategory"
+      ) {
+        if (!this.currentCategory) {
+          console.error("Не выбрана категория для действия:", action);
+          return;
+        }
+      }
+
       switch (action) {
         case "openMarker":
           this.centerMapOnMarker(this.currentMarker);
           break;
         case "editMarker":
-          this.showMarkerEditor = true;
+          // Открываем редактор маркера, если маркер и категория определены
+          if (this.currentMarker && this.currentCategory) {
+            // Гарантируем, что markdownContent присутствует
+            if (!this.currentMarker.markdownContent) {
+              this.currentMarker.markdownContent =
+                this.currentMarker.description || "";
+            }
+
+            // Гарантируем, что blocks присутствует
+            if (
+              !this.currentMarker.blocks ||
+              !Array.isArray(this.currentMarker.blocks)
+            ) {
+              this.currentMarker.blocks = this.markdownToBlocks(
+                this.currentMarker.markdownContent
+              );
+            }
+
+            this.showMarkerEditor = true;
+          } else {
+            console.error("Недостаточно данных для открытия редактора маркера");
+          }
           break;
         case "deleteMarker":
           this.confirmDelete(this.currentMarker, "marker");
@@ -1354,6 +1468,8 @@ export default {
         case "deleteCategory":
           this.confirmDelete(this.currentCategory, "category");
           break;
+        default:
+          console.warn("Неизвестное действие контекстного меню:", action);
       }
     },
 
@@ -1541,7 +1657,7 @@ export default {
      */
     async saveMarkerChanges(updatedMarkerData) {
       try {
-        console.log("Сохранение изменений маркера:", updatedMarkerData);
+        console.log("Сохраняем маркер:", updatedMarkerData);
 
         // Проверяем наличие ID маркера и используем правильное свойство
         const markerId = updatedMarkerData.marker_id || updatedMarkerData.id;
@@ -1551,73 +1667,77 @@ export default {
           throw new Error("ID маркера не определен");
         }
 
-        // Сначала обновляем markdown-содержимое
+        // Сначала обновляем markdown-содержимое, если оно определено
         if (updatedMarkerData.markdownContent !== undefined) {
-          await this.saveMarkdownContent(
-            markerId,
-            updatedMarkerData.markdownContent
+          try {
+            await this.saveMarkdownContent(
+              markerId,
+              updatedMarkerData.markdownContent
+            );
+          } catch (err) {
+            console.error("Ошибка при сохранении содержимого маркера:", err);
+            // Продолжаем выполнение, чтобы хотя бы обновить другие поля маркера
+          }
+        }
+
+        // Проверяем и округляем координаты для хранения в БД
+        if (
+          updatedMarkerData.latitude !== undefined &&
+          updatedMarkerData.longitude !== undefined
+        ) {
+          // Просто округляем координаты для корректного сохранения в БД
+          const normalizedCoords = this.normalizeCoordinates(
+            updatedMarkerData.latitude,
+            updatedMarkerData.longitude
           );
+
+          console.log("Координаты для обновления:", normalizedCoords);
+
+          // Формируем данные для отправки на сервер
+          const markerData = {
+            latitude: normalizedCoords.latitude,
+            longitude: normalizedCoords.longitude,
+            title: updatedMarkerData.name || updatedMarkerData.title,
+            description: updatedMarkerData.description || "",
+          };
+
+          console.log("Отправка данных маркера на сервер:", markerData);
+
+          // Отправляем запрос на обновление маркера
+          const response = await api.put(`/markers/${markerId}`, markerData);
+
+          if (!response || !response.data) {
+            console.warn("Ответ от сервера некорректен:", response);
+            throw new Error("Не удалось обновить маркер");
+          }
+
+          console.log("Маркер успешно обновлен:", response.data);
+
+          // Обновляем маркер в локальном состоянии
+          this.updateMarkerInCategories(markerId, {
+            name: updatedMarkerData.name,
+            title: updatedMarkerData.name,
+            // Используем оригинальные координаты
+            latitude: updatedMarkerData.latitude,
+            longitude: updatedMarkerData.longitude,
+            position: [updatedMarkerData.latitude, updatedMarkerData.longitude],
+            markdownContent: updatedMarkerData.markdownContent,
+            blocks: updatedMarkerData.blocks,
+            visible:
+              updatedMarkerData.visible !== undefined
+                ? updatedMarkerData.visible
+                : true,
+          });
+
+          // Перерисовываем маркеры для отображения обновленных данных
+          this.renderMarkers();
+
+          // Маркер успешно обновлен, но не закрываем редактор
+          return true;
+        } else {
+          console.error("Ошибка: координаты не определены", updatedMarkerData);
+          return false;
         }
-
-        // Логируем исходные координаты для отладки
-        console.log("Исходные координаты:", {
-          latitude: updatedMarkerData.latitude,
-          longitude: updatedMarkerData.longitude,
-        });
-
-        // Нормализуем координаты для хранения в БД
-        const normalizedCoords = this.normalizeCoordinates(
-          updatedMarkerData.latitude,
-          updatedMarkerData.longitude
-        );
-
-        console.log(
-          "Нормализованные координаты для обновления:",
-          normalizedCoords
-        );
-
-        // Формируем данные для отправки на сервер
-        const markerData = {
-          latitude: normalizedCoords.latitude,
-          longitude: normalizedCoords.longitude,
-          title: updatedMarkerData.name || updatedMarkerData.title,
-          description: updatedMarkerData.description || "",
-        };
-
-        console.log("Отправка данных маркера на сервер:", markerData);
-
-        // Отправляем запрос на обновление маркера
-        const response = await api.put(`/markers/${markerId}`, markerData);
-
-        if (!response.data) {
-          throw new Error("Не удалось обновить маркер");
-        }
-
-        console.log("Маркер успешно обновлен:", response.data);
-
-        // Обновляем маркер в локальном состоянии
-        this.updateMarkerInCategories(markerId, {
-          name: updatedMarkerData.name,
-          title: updatedMarkerData.name,
-          latitude: updatedMarkerData.latitude, // Сохраняем пиксельные координаты для интерфейса
-          longitude: updatedMarkerData.longitude,
-          // Также сохраняем нормализованные координаты для последующей отправки на сервер
-          normalizedLatitude: normalizedCoords.latitude,
-          normalizedLongitude: normalizedCoords.longitude,
-          position: [updatedMarkerData.latitude, updatedMarkerData.longitude],
-          markdownContent: updatedMarkerData.markdownContent,
-          visible:
-            updatedMarkerData.visible !== undefined
-              ? updatedMarkerData.visible
-              : true,
-        });
-
-        // Закрываем редактор
-        this.currentMarker = null;
-        this.currentCategory = null;
-        this.showMarkerEditor = false;
-
-        return true;
       } catch (error) {
         console.error("Ошибка при обновлении маркера:", error);
         return false;
@@ -1630,24 +1750,71 @@ export default {
      * @param {Object} updatedData - обновленные данные
      */
     updateMarkerInCategories(markerId, updatedData) {
+      if (!markerId || !updatedData) {
+        console.error("Неправильные параметры для updateMarkerInCategories", {
+          markerId,
+          updatedData,
+        });
+        return;
+      }
+
       // Ищем маркер в каждой категории
       for (const category of this.categories) {
+        if (!category.markers || !Array.isArray(category.markers)) {
+          continue;
+        }
+
         const markerIndex = category.markers.findIndex(
-          (m) => m.id === markerId || m.marker_id === markerId
+          (m) => m && (m.id === markerId || m.marker_id === markerId)
         );
 
         if (markerIndex !== -1) {
           // Обновляем данные маркера с сохранением ссылки на объект
           const marker = category.markers[markerIndex];
-          if (updatedData.name) marker.name = updatedData.name;
-          if (updatedData.title) marker.title = updatedData.title;
-          if (updatedData.description)
+
+          // Обновляем только определенные свойства
+          if (updatedData.name !== undefined) marker.name = updatedData.name;
+          if (updatedData.title !== undefined) marker.title = updatedData.title;
+          if (updatedData.description !== undefined)
             marker.description = updatedData.description;
-          if (updatedData.markdownContent)
+          if (updatedData.markdownContent !== undefined)
             marker.markdownContent = updatedData.markdownContent;
-          if (updatedData.blocks) marker.blocks = updatedData.blocks;
+          if (updatedData.blocks !== undefined)
+            marker.blocks = updatedData.blocks;
+          if (updatedData.latitude !== undefined)
+            marker.latitude = updatedData.latitude;
+          if (updatedData.longitude !== undefined)
+            marker.longitude = updatedData.longitude;
+          if (updatedData.position !== undefined)
+            marker.position = updatedData.position;
+          if (updatedData.visible !== undefined)
+            marker.visible = updatedData.visible;
+          if (updatedData.normalizedLatitude !== undefined)
+            marker.normalizedLatitude = updatedData.normalizedLatitude;
+          if (updatedData.normalizedLongitude !== undefined)
+            marker.normalizedLongitude = updatedData.normalizedLongitude;
 
           console.log("Маркер обновлен в категории:", category.name);
+
+          // Обновляем метку на карте, если она существует
+          if (this.leafletMarkers && this.leafletMarkers[markerId]) {
+            try {
+              // Обновляем позицию маркера на карте, если изменились координаты
+              if (
+                updatedData.latitude !== undefined &&
+                updatedData.longitude !== undefined
+              ) {
+                const [lat, lng] = this.transformCoordinates(
+                  updatedData.longitude,
+                  updatedData.latitude
+                );
+                this.leafletMarkers[markerId].setLatLng([lat, lng]);
+              }
+            } catch (error) {
+              console.error("Ошибка при обновлении маркера на карте:", error);
+            }
+          }
+
           break;
         }
       }
@@ -1885,6 +2052,7 @@ export default {
      */
     confirmDelete(item, type) {
       this.itemToDelete = item;
+      this.deleteType = type; // Сохраняем тип удаляемого объекта
 
       if (type === "marker") {
         const markerName = item.title || item.name || "метка";
@@ -1906,6 +2074,7 @@ export default {
     cancelDelete() {
       this.showDeleteConfirmation = false;
       this.itemToDelete = null;
+      this.deleteType = null; // Сбрасываем тип удаляемого объекта
       this.confirmationMessage = "";
       this.confirmationInput = "";
     },
@@ -1921,7 +2090,11 @@ export default {
         return;
       }
 
-      if (item.title !== undefined || item.name !== undefined) {
+      // Проверяем, является ли объект маркером или категорией
+      const isMarker = this.deleteType === "marker";
+      const isCategory = this.deleteType === "category";
+
+      if (isMarker) {
         // Это маркер - не проверяем ввод, просто удаляем
         const categoryId = this.currentCategory.id;
 
@@ -2017,7 +2190,7 @@ export default {
           .catch((error) => {
             console.error("Ошибка при удалении маркера:", error);
           });
-      } else {
+      } else if (isCategory) {
         // Это категория - проверяем соответствие ввода
         if (this.confirmationInput !== item.name) {
           alert("Название категории введено неверно. Удаление отменено.");
@@ -2038,6 +2211,8 @@ export default {
                 `Ошибка при удалении коллекции: ${response.status}`
               );
             }
+
+            console.log(`Коллекция ${item.id} успешно удалена с сервера`);
 
             // Обновляем локальные данные
             const categoryIndex = this.categories.findIndex(
@@ -2063,6 +2238,8 @@ export default {
           .catch((error) => {
             console.error("Ошибка при удалении коллекции:", error);
           });
+      } else {
+        console.error("Неизвестный тип объекта для удаления");
       }
 
       this.cancelDelete();
@@ -2457,6 +2634,13 @@ export default {
      * @param {Event} event - событие
      */
     handleOutsideClick(event) {
+      // Проверяем, что клик не был в редакторе маркера
+      const editorElement = document.querySelector(".marker-editor-panel");
+      if (editorElement && editorElement.contains(event.target)) {
+        // Если клик был внутри редактора, игнорируем событие
+        return;
+      }
+
       // Закрываем контекстное меню при клике вне его
       if (this.showContextMenu) {
         const contextMenu = document.querySelector(".context-menu");
@@ -2573,33 +2757,23 @@ export default {
                 );
               }
 
-              // Денормализуем координаты из БД обратно в пиксельные для отображения на карте
+              // Логируем координаты из БД
               console.log(
                 `Маркер ${marker.marker_id}: координаты из БД [${marker.latitude}, ${marker.longitude}]`
               );
 
-              const pixelCoords = this.denormalizeCoordinates(
-                marker.latitude,
-                marker.longitude
-              );
-
-              console.log(
-                `Маркер ${marker.marker_id}: денормализованные координаты [${pixelCoords.latitude}, ${pixelCoords.longitude}]`
-              );
-
+              // Добавляем маркер в категорию с координатами как есть
               category.markers.push({
                 id: marker.marker_id,
-                marker_id: marker.marker_id, // Добавляем дублирование для совместимости
+                marker_id: marker.marker_id, // Дублируем для совместимости
                 name: marker.title || "Метка без названия",
+                title: marker.title || "Метка без названия",
                 visible: true,
-                // Используем денормализованные координаты для отображения на карте
-                position: [pixelCoords.latitude, pixelCoords.longitude],
-                // Храним оригинальные нормализованные координаты из БД
-                originalLatitude: marker.latitude,
-                originalLongitude: marker.longitude,
-                // Используем денормализованные координаты для работы с картой
-                latitude: pixelCoords.latitude,
-                longitude: pixelCoords.longitude,
+                // Используем координаты как есть
+                latitude: marker.latitude,
+                longitude: marker.longitude,
+                // Для совместимости с другими компонентами
+                position: [marker.latitude, marker.longitude],
                 blocks: blocks,
                 markdownContent: markdownContent,
               });
@@ -2734,36 +2908,54 @@ export default {
 
     /**
      * Нормализация координат для сохранения в базе данных
-     * Преобразует пиксельные координаты в диапазон, подходящий для БД (от -90 до 90)
-     * @param {number} latitude - широта (пиксельные координаты)
-     * @param {number} longitude - долгота (пиксельные координаты)
+     * Просто округляет значения для корректного сохранения в БД
+     * @param {number} latitude - широта
+     * @param {number} longitude - долгота
      * @returns {Object} - нормализованные координаты {latitude, longitude}
      */
     normalizeCoordinates(latitude, longitude) {
-      // Ограничиваем значения диапазоном от -90 до 90 для широты и от -180 до 180 для долготы
-      // Просто масштабируем пиксельные координаты до географических
-      const normalizedLat = (latitude / 1000) * 90; // Масштабируем до диапазона -90 до 90
-      const normalizedLng = (longitude / 1000) * 180; // Масштабируем до диапазона -180 до 180
+      if (
+        latitude === undefined ||
+        longitude === undefined ||
+        isNaN(latitude) ||
+        isNaN(longitude)
+      ) {
+        console.error("Некорректные координаты для нормализации:", {
+          latitude,
+          longitude,
+        });
+        // Возвращаем нулевые координаты в случае ошибки
+        return { latitude: 0, longitude: 0 };
+      }
 
+      // Просто округляем до 6 знаков после запятой для соответствия типу numeric(9,6) в БД
       return {
-        latitude: parseFloat(normalizedLat.toFixed(6)),
-        longitude: parseFloat(normalizedLng.toFixed(6)),
+        latitude: parseFloat(latitude.toFixed(6)),
+        longitude: parseFloat(longitude.toFixed(6)),
       };
     },
 
     /**
-     * Преобразование нормализованных координат обратно в пиксельные
-     * @param {number} lat - нормализованная широта
-     * @param {number} lng - нормализованная долгота
-     * @returns {Object} - пиксельные координаты {latitude, longitude}
+     * Преобразование координат из БД для использования в интерфейсе
+     * В CustomMapView.vue не преобразуем координаты, чтобы избежать искажений
+     * @param {number} lat - широта из БД
+     * @param {number} lng - долгота из БД
+     * @returns {Object} - координаты для использования в интерфейсе {latitude, longitude}
      */
     denormalizeCoordinates(lat, lng) {
-      const pixelLat = (lat / 90) * 1000;
-      const pixelLng = (lng / 180) * 1000;
+      if (lat === undefined || lng === undefined || isNaN(lat) || isNaN(lng)) {
+        console.error("Некорректные координаты для денормализации:", {
+          lat,
+          lng,
+        });
+        // Возвращаем центр карты в случае ошибки
+        return { latitude: 500, longitude: 500 };
+      }
 
+      // Просто возвращаем те же координаты без преобразований
       return {
-        latitude: pixelLat,
-        longitude: pixelLng,
+        latitude: lat,
+        longitude: lng,
       };
     },
 
@@ -2793,6 +2985,180 @@ export default {
         console.error("Ошибка при обновлении статьи маркера:", articleError);
         return false;
       }
+    },
+
+    /**
+     * Обработчик нажатия клавиш
+     * @param {KeyboardEvent} event - событие клавиатуры
+     */
+    handleKeyDown(event) {
+      // Закрываем редактор маркера при нажатии ESC
+      if (event.key === "Escape" && this.showMarkerEditor) {
+        this.closeMarkerEditor();
+      }
+    },
+
+    /**
+     * Закрытие редактора маркера
+     */
+    closeMarkerEditor() {
+      if (this.showMarkerEditor) {
+        // Сначала сохраняем изменения, если они есть
+        if (this.currentMarker && this.currentCategory) {
+          this.saveMarkerChanges(this.currentMarker);
+        }
+        this.showMarkerEditor = false;
+      }
+    },
+
+    /**
+     * Преобразование markdown в блоки для редактора
+     * @param {string} markdown - текст в формате markdown
+     * @returns {Array} массив блоков для редактора
+     */
+    markdownToBlocks(markdown) {
+      if (!markdown) return [{ type: "text", content: "" }];
+
+      let processedMarkdown = markdown.replace(/\n\n/g, "\n⚛\n");
+
+      const lines = processedMarkdown.split("\n");
+      const blocks = [];
+
+      let i = 0;
+      while (i < lines.length) {
+        const line = lines[i];
+
+        if (line === "⚛" || line.trim() === "" || line === "") {
+          blocks.push({ type: "text", content: "" });
+          i++;
+          continue;
+        }
+
+        if (line.trim().startsWith("# ")) {
+          blocks.push({
+            type: "heading1",
+            content: line.trim().substring(2).trim(),
+          });
+          i++;
+          continue;
+        }
+
+        if (line.trim().startsWith("## ")) {
+          blocks.push({
+            type: "heading2",
+            content: line.trim().substring(3).trim(),
+          });
+          i++;
+          continue;
+        }
+
+        if (line.trim().startsWith("### ")) {
+          blocks.push({
+            type: "heading3",
+            content: line.trim().substring(4).trim(),
+          });
+          i++;
+          continue;
+        }
+
+        const taskMatch = line.trim().match(/^-\s*\[([ xX])\]\s*(.+)$/);
+        if (taskMatch) {
+          blocks.push({
+            type: "task-item",
+            content: taskMatch[2].trim(),
+            completed: taskMatch[1].toLowerCase() === "x",
+          });
+          i++;
+          continue;
+        }
+
+        if (line.trim().startsWith("- ")) {
+          blocks.push({
+            type: "list-item",
+            content: line.trim().substring(2).trim(),
+          });
+          i++;
+          continue;
+        }
+
+        if (line.trim().startsWith("* ")) {
+          blocks.push({
+            type: "list-item",
+            content: line.trim().substring(2).trim(),
+          });
+          i++;
+          continue;
+        }
+
+        const orderedListMatch = line.trim().match(/^(\d+)\.\s+(.+)$/);
+        if (orderedListMatch) {
+          blocks.push({
+            type: "ordered-list-item",
+            content: orderedListMatch[2].trim(),
+            order: parseInt(orderedListMatch[1]),
+          });
+          i++;
+          continue;
+        }
+
+        if (line.trim() === "---") {
+          blocks.push({ type: "divider" });
+          i++;
+          continue;
+        }
+
+        if (line.trim().startsWith("> ")) {
+          blocks.push({
+            type: "quote",
+            content: line.trim().substring(2).trim(),
+          });
+          i++;
+          continue;
+        }
+
+        let textContent = line;
+        let j = i + 1;
+        while (j < lines.length) {
+          const nextLine = lines[j];
+
+          if (
+            nextLine === "" ||
+            nextLine === "⚛" ||
+            nextLine.trim() === "" ||
+            nextLine.trim().startsWith("# ") ||
+            nextLine.trim().startsWith("## ") ||
+            nextLine.trim().startsWith("### ") ||
+            nextLine.trim().startsWith("- ") ||
+            nextLine.trim().startsWith("* ") ||
+            nextLine.trim().match(/^\d+\.\s+/) ||
+            nextLine.trim() === "---" ||
+            nextLine.trim().startsWith("> ") ||
+            nextLine.trim().match(/^-\s*\[([ xX])\]\s*(.+)$/)
+          ) {
+            break;
+          }
+
+          textContent += "\n" + lines[j];
+          j++;
+        }
+
+        blocks.push({
+          type: "text",
+          content: textContent,
+        });
+
+        i = j;
+      }
+
+      if (
+        blocks.length === 0 ||
+        blocks[blocks.length - 1].type !== "text" ||
+        blocks[blocks.length - 1].content.trim() !== ""
+      ) {
+        blocks.push({ type: "text", content: "" });
+      }
+
+      return blocks;
     },
   },
 };
