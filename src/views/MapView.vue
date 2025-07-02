@@ -261,37 +261,27 @@ export default {
   },
   methods: {
     /**
-     * Нормализация координат для сохранения в базе данных
-     * Преобразует пиксельные координаты в диапазон, подходящий для БД (от -90 до 90)
-     * @param {number} latitude - широта (пиксельные координаты)
-     * @param {number} longitude - долгота (пиксельные координаты)
-     * @returns {Object} - нормализованные координаты {latitude, longitude}
+     * Форматирование координат для сохранения в БД
+     * @param {number} latitude - широта
+     * @param {number} longitude - долгота
+     * @returns {Object} - отформатированные координаты {latitude, longitude}
      */
     normalizeCoordinates(latitude, longitude) {
-      // Ограничиваем значения диапазоном от -90 до 90 для широты и от -180 до 180 для долготы
-      // Просто масштабируем пиксельные координаты до географических
-      const normalizedLat = (latitude / 1000) * 90; // Масштабируем до диапазона -90 до 90
-      const normalizedLng = (longitude / 1000) * 180; // Масштабируем до диапазона -180 до 180
-
+      // Просто форматируем координаты в нужный формат для БД
       return {
-        latitude: parseFloat(normalizedLat.toFixed(6)),
-        longitude: parseFloat(normalizedLng.toFixed(6)),
+        latitude: parseFloat(parseFloat(latitude).toFixed(6)),
+        longitude: parseFloat(parseFloat(longitude).toFixed(6)),
       };
     },
 
     /**
-     * Преобразование нормализованных координат обратно в пиксельные
-     * @param {number} lat - нормализованная широта
-     * @param {number} lng - нормализованная долгота
-     * @returns {Object} - пиксельные координаты {latitude, longitude}
+     * Метод оставлен для обратной совместимости
+     * Просто возвращает исходные координаты без изменений
      */
     denormalizeCoordinates(lat, lng) {
-      const pixelLat = (lat / 90) * 1000;
-      const pixelLng = (lng / 180) * 1000;
-
       return {
-        latitude: pixelLat,
-        longitude: pixelLng,
+        latitude: lat,
+        longitude: lng,
       };
     },
 
@@ -527,6 +517,26 @@ export default {
       }
     },
 
+    /**
+     * Преобразует строковые координаты из БД в числовые значения
+     * Учитывает возможные различия в форматировании (запятые/точки)
+     * @param {string|number} lat - широта из БД
+     * @param {string|number} lng - долгота из БД
+     * @returns {Array} - массив координат [lat, lng]
+     */
+    parseDbCoordinates(lat, lng) {
+      // Обрабатываем случай, когда координаты могут быть строками с запятой вместо точки
+      const parseCoord = (coord) => {
+        if (typeof coord === "string") {
+          // Заменяем запятую на точку, если она есть
+          return parseFloat(coord.replace(",", "."));
+        }
+        return parseFloat(coord);
+      };
+
+      return [parseCoord(lat), parseCoord(lng)];
+    },
+
     async loadCollectionsFromServer(mapId) {
       try {
         // Загружаем коллекции для карты с сервера
@@ -589,6 +599,15 @@ export default {
 
             // Преобразуем маркеры в формат для отображения
             for (const marker of markers) {
+              // Корректно парсим координаты из БД
+              const position = this.parseDbCoordinates(
+                marker.latitude,
+                marker.longitude
+              );
+              console.log(
+                `Маркер ${marker.marker_id}: исходные координаты [${marker.latitude}, ${marker.longitude}], преобразованные: [${position[0]}, ${position[1]}]`
+              );
+
               // Загружаем статью для маркера
               let blocks = [
                 { type: "text", content: marker.description || "" },
@@ -625,7 +644,7 @@ export default {
                 id: marker.marker_id,
                 name: marker.title || "Метка без названия",
                 visible: true,
-                position: [marker.latitude, marker.longitude],
+                position: position,
                 blocks: blocks,
                 markdownContent: markdownContent,
               });
@@ -1206,6 +1225,9 @@ export default {
     },
 
     createMarker() {
+      // Закрываем панель создания сразу после выбора опции
+      this.showCreatePanel = false;
+
       // Если категорий нет, предложим создать категорию
       if (this.categories.length === 0) {
         alert("Сначала нужно создать категорию");
@@ -1314,14 +1336,14 @@ export default {
           });
 
           try {
-            // Нормализуем координаты для сохранения в БД
-            const normalizedCoords = this.normalizeCoordinates(
+            // Форматируем координаты для сохранения в БД
+            const formattedCoords = this.normalizeCoordinates(
               position[0],
               position[1]
             );
-            console.log("Нормализованные координаты:", normalizedCoords);
+            console.log("Форматированные координаты для БД:", formattedCoords);
 
-            // Создаем маркер на сервере с нормализованными координатами
+            // Создаем маркер на сервере с форматированными координатами
             const response = await fetch(`${API_URL}/markers/`, {
               method: "POST",
               headers: {
@@ -1329,8 +1351,8 @@ export default {
                 Authorization: `Bearer ${Cookies.get("access_token")}`,
               },
               body: JSON.stringify({
-                latitude: normalizedCoords.latitude,
-                longitude: normalizedCoords.longitude,
+                latitude: formattedCoords.latitude,
+                longitude: formattedCoords.longitude,
                 title: defaultName,
                 description: "Описание метки",
                 map_id: mapId,
@@ -1552,8 +1574,8 @@ export default {
                 return false;
               }
 
-              // Нормализуем координаты перед отправкой
-              const normalizedCoords = this.normalizeCoordinates(
+              // Форматируем координаты перед отправкой
+              const formattedCoords = this.normalizeCoordinates(
                 updatedMarker.position[0],
                 updatedMarker.position[1]
               );
@@ -1562,8 +1584,8 @@ export default {
                 longitude: updatedMarker.position[1],
               });
               console.log(
-                "Нормализованные координаты для сохранения:",
-                normalizedCoords
+                "Форматированные координаты для сохранения:",
+                formattedCoords
               );
 
               // Создаем новый маркер
@@ -1574,8 +1596,8 @@ export default {
                   Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify({
-                  latitude: normalizedCoords.latitude,
-                  longitude: normalizedCoords.longitude,
+                  latitude: formattedCoords.latitude,
+                  longitude: formattedCoords.longitude,
                   title: updatedMarker.name,
                   description: updatedMarker.description || "",
                   map_id: this.$route.params.id,
@@ -1644,8 +1666,8 @@ export default {
                 return false;
               }
 
-              // Нормализуем координаты перед отправкой
-              const normalizedCoords = this.normalizeCoordinates(
+              // Форматируем координаты перед отправкой
+              const formattedCoords = this.normalizeCoordinates(
                 updatedMarker.position[0],
                 updatedMarker.position[1]
               );
@@ -1654,8 +1676,8 @@ export default {
                 longitude: updatedMarker.position[1],
               });
               console.log(
-                "Нормализованные координаты для обновления:",
-                normalizedCoords
+                "Форматированные координаты для обновления:",
+                formattedCoords
               );
 
               // Обновляем основные данные маркера
@@ -1668,8 +1690,8 @@ export default {
                     Authorization: `Bearer ${token}`,
                   },
                   body: JSON.stringify({
-                    latitude: normalizedCoords.latitude,
-                    longitude: normalizedCoords.longitude,
+                    latitude: formattedCoords.latitude,
+                    longitude: formattedCoords.longitude,
                     title: updatedMarker.name,
                   }),
                 }
@@ -2838,17 +2860,17 @@ export default {
       }
 
       try {
-        // Нормализуем координаты перед отправкой
-        const normalizedCoords = this.normalizeCoordinates(
+        // Форматируем координаты перед отправкой
+        const formattedCoords = this.normalizeCoordinates(
           marker.position[0],
           marker.position[1]
         );
-        console.log(`Маркер ${marker.id}: нормализуем координаты.`);
+        console.log(`Маркер ${marker.id}: форматируем координаты.`);
         console.log("Исходные координаты:", {
           latitude: marker.position[0],
           longitude: marker.position[1],
         });
-        console.log("Нормализованные координаты:", normalizedCoords);
+        console.log("Форматированные координаты:", formattedCoords);
 
         const response = await fetch(`${API_URL}/markers/${marker.id}`, {
           method: "PUT",
@@ -2858,8 +2880,8 @@ export default {
           },
           body: JSON.stringify({
             title: marker.name,
-            latitude: normalizedCoords.latitude,
-            longitude: normalizedCoords.longitude,
+            latitude: formattedCoords.latitude,
+            longitude: formattedCoords.longitude,
           }),
         });
 

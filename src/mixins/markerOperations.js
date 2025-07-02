@@ -7,22 +7,39 @@ import { API_URL } from '@/api';
 export const markerOperationsMixin = {
     methods: {
         /**
-         * Нормализация координат для сохранения в базе данных
-         * Преобразует пиксельные координаты в диапазон, подходящий для БД (от -90 до 90)
-         * @param {number} latitude - широта (пиксельные координаты)
-         * @param {number} longitude - долгота (пиксельные координаты)
-         * @returns {Object} - нормализованные координаты {latitude, longitude}
+         * Подготовка координат для сохранения в базе данных
+         * Форматирует координаты в требуемый формат БД (numeric(9, 6))
+         * @param {number} latitude - широта
+         * @param {number} longitude - долгота
+         * @returns {Object} - форматированные координаты {latitude, longitude}
          */
         normalizeCoordinates(latitude, longitude) {
-            // Ограничиваем значения диапазоном от -90 до 90 для широты и от -180 до 180 для долготы
-            // Просто масштабируем пиксельные координаты до географических
-            const normalizedLat = (latitude / 1000) * 90; // Масштабируем до диапазона -90 до 90
-            const normalizedLng = (longitude / 1000) * 180; // Масштабируем до диапазона -180 до 180
-
+            // Просто форматируем координаты в нужный формат для БД
+            // без масштабирования и преобразования
             return {
-                latitude: parseFloat(normalizedLat.toFixed(6)),
-                longitude: parseFloat(normalizedLng.toFixed(6))
+                latitude: parseFloat(parseFloat(latitude).toFixed(6)),
+                longitude: parseFloat(parseFloat(longitude).toFixed(6))
             };
+        },
+
+        /**
+         * Преобразует строковые координаты из БД в числовые значения
+         * Учитывает возможные различия в форматировании (запятые/точки)
+         * @param {string|number} lat - широта из БД
+         * @param {string|number} lng - долгота из БД
+         * @returns {Array} - массив координат [lat, lng]
+         */
+        parseDbCoordinates(lat, lng) {
+            // Обрабатываем случай, когда координаты могут быть строками с запятой вместо точки
+            const parseCoord = (coord) => {
+                if (typeof coord === 'string') {
+                    // Заменяем запятую на точку, если она есть
+                    return parseFloat(coord.replace(',', '.'));
+                }
+                return parseFloat(coord);
+            };
+
+            return [parseCoord(lat), parseCoord(lng)];
         },
 
         // Базовый метод создания маркера на сервере
@@ -30,9 +47,9 @@ export const markerOperationsMixin = {
             const mapId = this.$route.params.id;
 
             try {
-                // Нормализуем координаты для сохранения в БД
-                const normalizedCoords = this.normalizeCoordinates(latitude, longitude);
-                console.log("Нормализованные координаты:", normalizedCoords);
+                // Форматируем координаты для сохранения в БД
+                const formattedCoords = this.normalizeCoordinates(latitude, longitude);
+                console.log("Форматированные координаты для БД:", formattedCoords);
 
                 // Создаем маркер на сервере
                 const markerResponse = await fetch(`${API_URL}/markers/`, {
@@ -42,8 +59,8 @@ export const markerOperationsMixin = {
                         Authorization: `Bearer ${Cookies.get("access_token")}`
                     },
                     body: JSON.stringify({
-                        latitude: normalizedCoords.latitude,
-                        longitude: normalizedCoords.longitude,
+                        latitude: formattedCoords.latitude,
+                        longitude: formattedCoords.longitude,
                         title,
                         description: "",
                         map_id: mapId

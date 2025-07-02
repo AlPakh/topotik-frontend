@@ -22,19 +22,26 @@
         <span class="item-name" :title="item.name">{{ item.name }}</span>
       </div>
       <div v-else-if="item.type === 'map'" class="item-content">
-        <span
-          v-if="item.is_shared"
-          class="item-icon"
-          :title="getSharedTitle(item)"
-          >🌏︎</span
-        >
-        <span v-else-if="item.mapType === 'real'" class="item-icon">🗺️</span>
-        <span v-else class="item-icon">🗒️</span>
+        <!-- Контейнер для иконки с поддержкой наложения -->
+        <div class="icon-container">
+          <!-- Основная иконка карты -->
+          <div v-if="item.mapType === 'real'" class="icon">🗺️</div>
+          <div v-else class="icon">🗒️</div>
+
+          <!-- Индикатор, если карта общая -->
+          <div
+            v-if="isSharedMap(item)"
+            class="shared-overlay-icon"
+            :title="getSharedTitle(item)"
+          >
+            🌐
+          </div>
+        </div>
         <span class="item-name" :title="item.name">{{ item.name }}</span>
 
         <!-- Показываем владельца для общих карт -->
-        <span v-if="item.is_shared" class="shared-by"
-          >от {{ item.shared_by || "Неизвестного пользователя" }}</span
+        <span v-if="isSharedMap(item)" class="shared-by"
+          >от {{ getSharedOwner(item) }}</span
         >
       </div>
 
@@ -107,9 +114,22 @@ export default {
     },
   },
   methods: {
+    // Проверка, является ли элемент общей картой
+    isSharedMap(item) {
+      return item.isShared === true || item.is_shared === true;
+    },
     // Получить заголовок для общей карты
     getSharedTitle(item) {
-      return `Общая карта от: ${item.shared_by || "Неизвестного пользователя"}`;
+      return `Общая карта от: ${this.getSharedOwner(item)}`;
+    },
+    // Получить имя владельца расшаренной карты
+    getSharedOwner(item) {
+      return (
+        item.ownerName ||
+        item.shared_by ||
+        (item.owner && item.owner.username) ||
+        "Неизвестного пользователя"
+      );
     },
     // Обновление состояния элемента
     updateItemState(item, newState) {
@@ -266,5 +286,34 @@ export default {
   font-size: 0.8em;
   color: #666;
   margin-left: 5px;
+}
+
+/* Стили для контейнера иконки и наложения */
+.icon-container {
+  position: relative;
+  display: inline-block;
+}
+
+.icon {
+  font-size: 1.2em;
+}
+
+.shared-overlay-icon {
+  position: absolute;
+  bottom: -5px;
+  right: -5px;
+  font-size: 12px;
+  background-color: white;
+  border-radius: 50%;
+  padding: 0px;
+  line-height: 1;
+  border: 1px solid #4a90e2;
+  color: #4a90e2;
+  height: 16px;
+  width: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 </style>

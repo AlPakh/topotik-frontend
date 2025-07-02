@@ -35,17 +35,14 @@ export const setAuthToken = (token) => {
 // Функция для обновления токена с использованием refresh токена
 export const refreshAccessToken = async () => {
     try {
-        const refreshToken = Cookies.get('refresh_token');
-        if (!refreshToken) {
-            throw new Error('Refresh токен не найден');
-        }
-
+        // Отправляем запрос на обновление токена
+        // Так как куки httpOnly, то они автоматически будут отправлены с запросом
         const response = await fetch(`${API_URL}/auth/token/refresh`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify({ refresh_token: refreshToken })
+            credentials: 'include'  // Важно для отправки cookies с запросом
         });
 
         if (!response.ok) {
@@ -54,8 +51,7 @@ export const refreshAccessToken = async () => {
 
         const data = await response.json();
 
-        // Обновляем токен в куки и заголовках
-        Cookies.set('access_token', data.access_token, { expires: 15 }); // 15 дней
+        // Обновляем токен в заголовках
         setAuthToken(data.access_token);
 
         return data;

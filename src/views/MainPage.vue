@@ -305,46 +305,59 @@ export default {
 
     // Пытаемся восстановить последнюю посещенную папку из cookies
     async tryRestoreLastFolder() {
-      const lastFolder = getLastOpenedFolder();
+      try {
+        const lastFolder = getLastOpenedFolder();
+        console.log("Восстанавливаем последнюю папку:", lastFolder);
 
-      if (lastFolder && lastFolder.id) {
-        // Специальная обработка для корневого каталога
-        if (lastFolder.id === "root") {
-          console.log("Восстановление корневого каталога");
-          this.showRootDirectory();
-          return;
-        }
+        if (lastFolder && lastFolder.id) {
+          // Специальная обработка для корневого каталога
+          if (lastFolder.id === "root") {
+            console.log("Восстановление корневого каталога");
+            this.showRootDirectory();
+            return;
+          }
 
-        // Для остальных папок проверяем, существует ли такая папка
-        const folderExists = this.findItemById(
-          lastFolder.id,
-          this.folderStructure
-        );
+          // Загружаем актуальную структуру папок перед проверкой
+          await this.loadFolderStructure();
 
-        if (folderExists) {
-          // Если папка существует, выбираем ее
-          this.selectedItem = folderExists;
-
-          // И раскрываем путь к ней в левой панели
-          this.$nextTick(() => {
-            // Добавляем проверку на существование ссылки перед вызовом метода
-            if (this.$refs.leftSidebar) {
-              this.$refs.leftSidebar.expandPathToFolder(lastFolder.id);
-            } else {
-              console.warn(
-                "Ссылка на leftSidebar не доступна. Путь не будет раскрыт автоматически."
-              );
-            }
-          });
-        } else {
-          // Если папки нет, показываем сообщение и выбираем корневую
-          this.$alert.error(
-            "Не удалось открыть последнюю папку, так как она больше не существует"
+          // Для остальных папок проверяем, существует ли такая папка
+          const folderExists = this.findItemById(
+            lastFolder.id,
+            this.folderStructure
           );
+
+          if (folderExists) {
+            console.log("Найдена последняя папка:", folderExists.name);
+            // Если папка существует, выбираем ее
+            this.selectedItem = folderExists;
+
+            // И раскрываем путь к ней в левой панели
+            this.$nextTick(() => {
+              // Добавляем проверку на существование ссылки перед вызовом метода
+              if (this.$refs.leftSidebar) {
+                this.$refs.leftSidebar.expandPathToFolder(lastFolder.id);
+              } else {
+                console.warn(
+                  "Ссылка на leftSidebar не доступна. Путь не будет раскрыт автоматически."
+                );
+              }
+            });
+          } else {
+            console.warn("Папка больше не существует:", lastFolder.id);
+            // Если папки нет, показываем сообщение и выбираем корневую
+            this.$alert.info(
+              "Не удалось открыть последнюю папку, так как она больше не существует"
+            );
+            this.selectRootFolder();
+          }
+        } else {
+          console.log("Информация о последней папке отсутствует");
+          // Если информации о последней папке нет, выбираем корневую
           this.selectRootFolder();
         }
-      } else {
-        // Если информации о последней папке нет, выбираем корневую
+      } catch (error) {
+        console.error("Ошибка при восстановлении последней папки:", error);
+        // В случае ошибки показываем корневой каталог
         this.selectRootFolder();
       }
     },
@@ -402,13 +415,34 @@ export default {
       this.error = null;
 
       try {
+        console.log("Загрузка структуры папок...");
         const data = await getFolderStructure();
+        console.log("Получена структура папок:", data);
+
         // Преобразуем структуру, полученную от API, в формат для компонентов
         this.folderStructure = this.transformFolderStructure(data);
+
+        if (!this.folderStructure || this.folderStructure.length === 0) {
+          console.warn("Загружена пустая структура папок");
+        } else {
+          console.log("Структура папок успешно загружена");
+        }
+
         return true;
       } catch (err) {
         console.error("Ошибка загрузки структуры:", err);
-        this.error = "Не удалось загрузить структуру папок и карт";
+
+        // Проверяем тип ошибки
+        if (err.response && err.response.status === 401) {
+          console.warn("Ошибка авторизации при загрузке структуры папок");
+          this.$alert.error("Сессия истекла. Пожалуйста, войдите снова.");
+          // Перенаправляем на страницу входа
+          this.$router.push("/login");
+        } else {
+          this.error = "Не удалось загрузить структуру папок и карт";
+          this.$alert.error(this.error);
+        }
+
         return false;
       } finally {
         this.loading = false;

@@ -12,7 +12,10 @@
       @drop.prevent="onDrop"
       @dragenter.prevent="dragEnter = true"
       @dragleave="dragEnter = false"
-      :class="{ 'drag-over': dragEnter, 'shared-item': item.is_shared }"
+      :class="{
+        'drag-over': dragEnter,
+        'shared-item': item.isShared || item.is_shared,
+      }"
     >
       <!-- Иконка в зависимости от типа -->
       <div
@@ -33,26 +36,37 @@
           <img src="../assets/svg/arrow.svg" alt="Arrow" />
         </div>
       </div>
-      <div v-else-if="item.is_shared" class="icon" :title="getSharedTitle">
-        🌏︎
-      </div>
-      <div v-else-if="item.mapType === 'real'" class="icon">🗺️</div>
-      <div v-else class="icon">📔</div>
+      <!-- Карта с индикатором общего доступа -->
+      <div class="icon-container" v-else>
+        <!-- Основная иконка карты -->
+        <div v-if="item.mapType === 'real'" class="icon">🗺️</div>
+        <div v-else class="icon">📔</div>
 
-      <span class="item-name" :title="item.name">{{ displayName }}</span>
+        <!-- Индикатор, если карта общая -->
+        <div
+          v-if="isSharedMap"
+          class="shared-overlay-icon"
+          :title="getSharedTitle"
+        >
+          🌐
+        </div>
+      </div>
+
+      <span class="item-name" :title="item.name">
+        {{ displayName }}
+        <span v-if="isSharedMap" class="shared-owner-label">
+          (от {{ sharedOwner }})
+        </span>
+      </span>
 
       <!-- Кнопка с тремя точками (только для неshared элементов) -->
-      <button
-        v-if="!item.is_shared"
-        class="dots-button"
-        @click.stop="toggleMenu"
-      >
+      <button v-if="!isSharedMap" class="dots-button" @click.stop="toggleMenu">
         ⋮
       </button>
 
       <!-- Контекстное меню (только для неshared элементов) -->
       <div
-        v-if="showMenu && !item.is_shared"
+        v-if="showMenu && !isSharedMap"
         class="context-menu"
         @mouseover="menuHovered = true"
         @mouseleave="menuHovered = false"
@@ -114,6 +128,21 @@ export default {
     };
   },
   computed: {
+    // Определяем, является ли карта расшаренной
+    isSharedMap() {
+      return this.item.isShared === true || this.item.is_shared === true;
+    },
+
+    // Имя владельца расшаренной карты
+    sharedOwner() {
+      return (
+        this.item.ownerName ||
+        this.item.shared_by ||
+        (this.item.owner && this.item.owner.username) ||
+        "Неизвестный"
+      );
+    },
+
     displayName() {
       // Форматируем имя для отображения
       if (!this.item.name) return "";
@@ -144,7 +173,7 @@ export default {
 
     // Заголовок для общей карты
     getSharedTitle() {
-      return `Карта от: ${this.item.shared_by || "Неизвестного пользователя"}`;
+      return `Карта от: ${this.sharedOwner}`;
     },
   },
   watch: {
@@ -186,7 +215,7 @@ export default {
     },
     onContextMenu(event) {
       // Открываем контекстное меню только для не-общих элементов
-      if (!this.item.is_shared) {
+      if (!this.isSharedMap) {
         this.showMenu = true;
 
         // Эмитим событие для родительского компонента с координатами и элементом
@@ -211,7 +240,7 @@ export default {
     },
     toggleMenu() {
       // Только для не-общих элементов
-      if (!this.item.is_shared) {
+      if (!this.isSharedMap) {
         this.showMenu = !this.showMenu;
       }
     },
@@ -369,5 +398,37 @@ export default {
 /* Стиль для общих карт */
 .shared-item {
   border-left: 2px solid #4a90e2;
+  background-color: rgba(74, 144, 226, 0.05);
+}
+
+.icon-container {
+  position: relative;
+  display: inline-block;
+}
+
+.shared-overlay-icon {
+  position: absolute;
+  bottom: -5px;
+  right: -5px;
+  font-size: 12px;
+  background-color: white;
+  border-radius: 50%;
+  padding: 0px;
+  line-height: 1;
+  border: 1px solid #4a90e2;
+  color: #4a90e2;
+  height: 16px;
+  width: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.shared-owner-label {
+  font-size: 0.8em;
+  color: #666;
+  margin-left: 3px;
+  font-style: italic;
 }
 </style>

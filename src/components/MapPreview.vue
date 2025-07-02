@@ -5,8 +5,15 @@
       <div v-else class="no-image" :class="{ 'custom-map': isCustomMap }">
         {{ isCustomMap ? "Нет фонового изображения" : "Карта OSM" }}
       </div>
+      <!-- Иконка владельца для расшаренной карты (наложение в нижнем правом углу) -->
+      <div v-if="isShared" class="shared-overlay">
+        <div class="shared-icon" :title="'Карта от: ' + ownerName">🌐</div>
+      </div>
     </div>
     <div class="map-info">
+      <!-- Информация о владельце для расшаренных карт -->
+      <div v-if="isShared" class="owner-info">Владелец: {{ ownerName }}</div>
+
       <div class="map-actions">
         <button v-if="isCustomMap" @click="uploadImage" class="upload-btn">
           {{
@@ -44,6 +51,20 @@ export default {
     return {};
   },
   computed: {
+    // Проверка, является ли карта расшаренной (т.е. поделились с текущим пользователем)
+    isShared() {
+      return this.map.isShared === true && this.map.ownerName;
+    },
+
+    // Имя владельца карты
+    ownerName() {
+      return (
+        this.map.ownerName ||
+        (this.map.owner && this.map.owner.username) ||
+        "Неизвестный"
+      );
+    },
+
     isCustomMap() {
       console.log("Данные карты:", JSON.stringify(this.map));
       console.log("Тип карты через map_type:", this.map.map_type);
@@ -248,6 +269,7 @@ export default {
   border-radius: 8px;
   overflow: hidden;
   margin-bottom: 15px;
+  position: relative;
   transition: transform 0.2s, box-shadow 0.2s;
 }
 
@@ -319,5 +341,36 @@ export default {
 .open-btn.disabled {
   background-color: #ccc;
   cursor: not-allowed;
+}
+
+/* Новые стили для наложения иконки */
+.shared-overlay {
+  position: absolute;
+  right: 15px;
+  bottom: 15px;
+  z-index: 5;
+}
+
+.shared-icon {
+  width: 28px;
+  height: 28px;
+  background-color: white;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  font-style: normal;
+  color: #4a90e2;
+  border: 2px solid #4a90e2;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+/* Информация о владельце */
+.owner-info {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 8px;
+  font-style: italic;
 }
 </style>

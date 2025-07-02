@@ -93,18 +93,10 @@ export default {
         console.error("Ошибка входа:", err);
 
         // Улучшенная обработка ошибок
-        if (err.response?.data?.detail) {
-          const detail = err.response.data.detail;
-
-          if (typeof detail === "string") {
-            if (detail.includes("Invalid credentials")) {
-              error.value = "Неверный логин или пароль";
-            } else {
-              error.value = detail;
-            }
-          } else {
-            error.value = "Ошибка входа. Проверьте учетные данные.";
-          }
+        if (err.message === "Неверный логин или пароль") {
+          error.value = "Неверный логин или пароль";
+        } else if (err.response?.data?.detail) {
+          error.value = err.response.data.detail;
         } else {
           error.value = "Ошибка входа. Пожалуйста, попробуйте позже.";
         }
